@@ -1,0 +1,11 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+PREFIX dcterms: <http://purl.org/dc/terms/>
+SELECT ?chunk ?source ?id ?title ?text
+WHERE {
+  ?chunk a veritas:RetrievalResult ;
+         veritas:derivedFrom ?source ;
+         veritas:hasIdentifier ?id .
+  OPTIONAL { ?chunk veritas:hasText ?text . }
+  OPTIONAL { ?source dcterms:title ?title . }
+}
+LIMIT 100

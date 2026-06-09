@@ -1,0 +1,1777 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF
+  xmlns:vann="http://purl.org/vocab/vann/"
+  xmlns:veritas="https://github.com/daddydrac/veritas/ontology#"
+  xmlns:owl="http://www.w3.org/2002/07/owl#"
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dcterms="http://purl.org/dc/terms/"
+  xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+  xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+>
+  <!-- OWL-DL hygiene: declare external annotation properties used in annotations. -->
+  <owl:AnnotationProperty rdf:about="http://www.w3.org/2004/02/skos/core#definition"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/title"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/creator"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/created"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/description"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/vocab/vann/preferredNamespacePrefix"/>
+  <owl:AnnotationProperty rdf:about="http://purl.org/vocab/vann/preferredNamespaceUri"/>
+
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCapabilityToComplexityRatio">
+    <rdfs:label xml:lang="en">has capability-to-complexity ratio</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, design, component, or representation to a capability-to-complexity ratio measurement.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#CapabilityToComplexityRatio"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CohesionQuality">
+    <rdfs:label xml:lang="en">cohesion quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning how well responsibilities, behaviors, and concepts belong together within a component, plan, or representation.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#OperationalCapability">
+    <rdfs:label xml:lang="en">operational capability</rdfs:label>
+    <skos:definition xml:lang="en">A capability for deployment, observability, runtime diagnosis, incident response, or operational control.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#BackCheckProcess">
+    <rdfs:label xml:lang="en">back-check process</rdfs:label>
+    <skos:definition xml:lang="en">A conformance check process that revisits earlier reasoning, control flow, assumptions, evidence, risks, and validation obligations to identify malformed logic.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ConformanceCheckProcess"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#realizesCapability">
+    <rdfs:label xml:lang="en">realizes capability</rdfs:label>
+    <skos:definition xml:lang="en">Relates a process to a capability realized during that process.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringProcess"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ValidationCheckProcess">
+    <rdfs:label xml:lang="en">validation check process</rdfs:label>
+    <skos:definition xml:lang="en">A planned engineering act that executes a validation check specification and produces evidence or findings.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#mapsFromSurface">
+    <rdfs:label xml:lang="en">maps from surface</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation map to the surface phenomenon description used as its domain-side description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationMap"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SurfacePhenomenonDescription"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasPostcondition">
+    <rdfs:label xml:lang="en">has postcondition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a transition, task, action, process, proof step, or deployment step to a postcondition.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Postcondition"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Justification">
+    <rdfs:label xml:lang="en">justification</rdfs:label>
+    <skos:definition xml:lang="en">An evidence artifact explaining why a claim, decision, design, mitigation, or plan step is supported.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ExecutionEnvironmentSpecification">
+    <rdfs:label xml:lang="en">execution environment specification</rdfs:label>
+    <skos:definition xml:lang="en">A runtime environment specification emphasizing where and under what conditions a process executes.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RuntimeEnvironmentSpecification"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#checksConformanceTo">
+    <rdfs:label xml:lang="en">checks conformance to</rdfs:label>
+    <skos:definition xml:lang="en">Relates a conformance check specification or process to the specification it checks.</skos:definition>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Metric">
+    <rdfs:label xml:lang="en">metric</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact representing a measured property of a system, process, service, environment, or user-facing outcome.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasLikelihoodValue">
+    <rdfs:label xml:lang="en">has likelihood value</rdfs:label>
+    <skos:definition xml:lang="en">Relates a likelihood estimate to a decimal likelihood value.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#LikelihoodEstimate"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasInvariant">
+    <rdfs:label xml:lang="en">has invariant</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to an invariant.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Invariant"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasImpactEstimate">
+    <rdfs:label xml:lang="en">has impact estimate</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk to an impact estimate.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ImpactEstimate"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#buildsInto">
+    <rdfs:label xml:lang="en">builds into</rdfs:label>
+    <skos:definition xml:lang="en">Relates a source code artifact to a build artifact produced from it.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#SourceCodeArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#BuildArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#introducesDependency">
+    <rdfs:label xml:lang="en">introduces dependency</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, design, or component to a dependency specification it introduces.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#DependencySpecification"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#emitsSignal">
+    <rdfs:label xml:lang="en">emits signal</rdfs:label>
+    <skos:definition xml:lang="en">Relates a deployment unit, service, process, or runtime environment to an observable signal.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ObservableSignal"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConceptualSurfaceAreaQuality">
+    <rdfs:label xml:lang="en">conceptual surface-area quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning how many concepts, rules, branches, dependencies, and exceptions a human or agent must track.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ComplexityQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DataRisk">
+    <rdfs:label xml:lang="en">data risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning data quality, data loss, privacy, lineage, availability, schema drift, or semantic mismatch.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PlanningHorizon">
+    <rdfs:label xml:lang="en">planning horizon</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact specifying the temporal or scope boundary for a plan.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#deployedAs">
+    <rdfs:label xml:lang="en">deployed as</rdfs:label>
+    <skos:definition xml:lang="en">Relates a software component or build artifact to a deployment unit specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#DeploymentUnitSpecification"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PipelineExecutionProcess">
+    <rdfs:label xml:lang="en">pipeline execution process</rdfs:label>
+    <skos:definition xml:lang="en">A planned engineering act that executes a pipeline specification.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Ontology rdf:about="https://github.com/daddydrac/veritas/ontology">
+    <owl:versionIRI rdf:resource="https://github.com/daddydrac/veritas/ontology/0.1.0"/>
+    <rdfs:label xml:lang="en">Veritas Ontology</rdfs:label>
+    <dcterms:title xml:lang="en">Veritas: A BFO/CCO-Aligned Ontology for Research, Engineering Planning, and Correctness</dcterms:title>
+    <dcterms:creator xml:lang="en">Generated for Jay Weinberg / Aktiver research-agent architecture</dcterms:creator>
+    <dcterms:created rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2026-06-09</dcterms:created>
+    <owl:versionInfo xml:lang="en">0.1.0-draft</owl:versionInfo>
+    <vann:preferredNamespacePrefix>veritas</vann:preferredNamespacePrefix>
+    <vann:preferredNamespaceUri>https://github.com/daddydrac/veritas/ontology#</vann:preferredNamespaceUri>
+    <dcterms:description xml:lang="en">Veritas is an OWL-DL application ontology aligned to BFO and CCO. It models expert mathematical research, software architecture, software engineering, DevOps/SRE operations, risk, evidence, simplicity pressure, and control-flow correctness.</dcterms:description>
+    <owl:imports rdf:resource="http://purl.obolibrary.org/obo/bfo/2020/bfo-core.owl"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/InformationEntityOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/EventOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/AgentOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/ArtifactOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/QualityOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/ExtendedRelationOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/TimeOntology"/>
+    <owl:imports rdf:resource="https://www.commoncoreontologies.org/UnitsOfMeasureOntology"/>
+    <veritas:owlDlNote xml:lang="en">This draft uses separate IRIs for classes, object properties, datatype properties, and annotation properties; does not use classes as individuals; avoids metamodeling; and keeps closed-world completeness checks outside OWL.</veritas:owlDlNote>
+    <veritas:competencyQuestion xml:lang="en">Which plan achieves an objective while minimizing complexity and unmitigated risk?</veritas:competencyQuestion>
+    <veritas:competencyQuestion xml:lang="en">Which mathematical claim lacks an explicit transformation family, invariant, evidence, or proof status?</veritas:competencyQuestion>
+    <veritas:competencyQuestion xml:lang="en">Which control-flow branches lack preconditions, postconditions, termination conditions, or recovery paths?</veritas:competencyQuestion>
+    <veritas:competencyQuestion xml:lang="en">Which runtime deployment unit lacks observable signals, SLOs, alerts, or runbooks?</veritas:competencyQuestion>
+    <veritas:competencyQuestion xml:lang="en">Which assumption is unverified and blocks a task, milestone, or engineering objective?</veritas:competencyQuestion>
+  </owl:Ontology>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CounterexampleArtifact">
+    <rdfs:label xml:lang="en">counterexample artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact describing an object or case that satisfies stated hypotheses while falsifying a claim or proposed invariant.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#invalidatedBy">
+    <rdfs:label xml:lang="en">invalidated by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a claim, plan, artifact, process, representation, invariant, or risk to evidence or a finding that invalidates it.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MissingPostconditionFinding">
+    <rdfs:label xml:lang="en">missing postcondition finding</rdfs:label>
+    <skos:definition xml:lang="en">A malformed control-flow finding that identifies a transition, action, task, or proof step lacking required postconditions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MalformedControlFlowFinding"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCompressionPrinciple">
+    <rdfs:label xml:lang="en">has compression principle</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a compression principle.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#CompressionPrinciple"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#blockedBy">
+    <rdfs:label xml:lang="en">blocked by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a task, plan, objective, process, or claim to something that blocks it.</skos:definition>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasPriority">
+    <rdfs:label xml:lang="en">has priority</rdfs:label>
+    <skos:definition xml:lang="en">Relates an artifact, task, risk, decision, or finding to a priority label.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#UnnecessaryDependencyFinding">
+    <rdfs:label xml:lang="en">unnecessary dependency finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that a dependency adds complexity, risk, coupling, or operational burden without necessary capability gain.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasConstraint">
+    <rdfs:label xml:lang="en">has constraint</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, artifact, process, design, or representation to a constraint specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ConstraintSpecification"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#UnverifiedAssumptionFinding">
+    <rdfs:label xml:lang="en">unverified assumption finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that identifies an assumption lacking sufficient verification evidence.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#testedBy">
+    <rdfs:label xml:lang="en">tested by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a component, artifact, contract, behavior, or process to a test specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TestSpecification"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#LatentVariableDescription">
+    <rdfs:label xml:lang="en">latent variable description</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact identifying a latent variable and its evidence, invariance, interpretability, and transfer status.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:AnnotationProperty rdf:about="https://github.com/daddydrac/veritas/ontology#module">
+    <rdfs:label xml:lang="en">module</rdfs:label>
+    <skos:definition xml:lang="en">Names the ontology module or concern area for a class or property.</skos:definition>
+  </owl:AnnotationProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasLatentStructure">
+    <rdfs:label xml:lang="en">has latent structure</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a latent structure description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#LatentStructureDescription"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#dependsOnTask">
+    <rdfs:label xml:lang="en">depends on task</rdfs:label>
+    <skos:definition xml:lang="en">Relates a task specification to another task specification required before or during it.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#TaskSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TaskSpecification"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasComplexityQuality">
+    <rdfs:label xml:lang="en">has complexity quality</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, artifact, component, representation, process, or design to a complexity quality.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ComplexityQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ModuleSpecification">
+    <rdfs:label xml:lang="en">module specification</rdfs:label>
+    <skos:definition xml:lang="en">A software component specification describing a module-level unit of code organization.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#mapsToLatentStructure">
+    <rdfs:label xml:lang="en">maps to latent structure</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation map to the latent structure description used as its codomain-side description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationMap"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#LatentStructureDescription"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRiskScore">
+    <rdfs:label xml:lang="en">has risk score</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk assessment to a decimal risk score.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#RiskAssessment"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRecursiveClosureBehavior">
+    <rdfs:label xml:lang="en">has recursive closure behavior</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a recursive closure behavior description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RecursiveClosureBehavior"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasImpactValue">
+    <rdfs:label xml:lang="en">has impact value</rdfs:label>
+    <skos:definition xml:lang="en">Relates an impact estimate to a decimal impact value.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#ImpactEstimate"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CouplingQuality">
+    <rdfs:label xml:lang="en">coupling quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning how strongly components, plans, processes, or representations depend on one another.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#UnreachableStateFinding">
+    <rdfs:label xml:lang="en">unreachable state finding</rdfs:label>
+    <skos:definition xml:lang="en">A malformed control-flow finding that identifies a state with no valid incoming path under specified assumptions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MalformedControlFlowFinding"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#derivedFrom">
+    <rdfs:label xml:lang="en">derived from</rdfs:label>
+    <skos:definition xml:lang="en">Relates an artifact, claim, finding, or result to a source artifact from which it was derived.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasStatus">
+    <rdfs:label xml:lang="en">has status</rdfs:label>
+    <skos:definition xml:lang="en">Relates an artifact, process, risk, finding, or plan to a status string.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#BehaviorSpecification">
+    <rdfs:label xml:lang="en">behavior specification</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive or prescriptive artifact specifying expected behavior of a component, process, interface, or system.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasConfidenceValue">
+    <rdfs:label xml:lang="en">has confidence value</rdfs:label>
+    <skos:definition xml:lang="en">Relates a confidence measurement to a decimal confidence value.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#ConfidenceMeasurement"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#AdmissibleTransformationSpecification">
+    <rdfs:label xml:lang="en">admissible transformation specification</rdfs:label>
+    <skos:definition xml:lang="en">A transformation specification classified as permitted for a given mathematical or engineering context.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#TransformationSpecification"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MilestoneSpecification">
+    <rdfs:label xml:lang="en">milestone specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a notable completion point within a plan.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasLikelihoodEstimate">
+    <rdfs:label xml:lang="en">has likelihood estimate</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk to a likelihood estimate.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#LikelihoodEstimate"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#addsCapability">
+    <rdfs:label xml:lang="en">adds capability</rdfs:label>
+    <skos:definition xml:lang="en">Relates a design, plan, task, component, or representation to a capability it adds or enables.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasAssumption">
+    <rdfs:label xml:lang="en">has assumption</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, claim, decision, or assessment to an assumption it uses.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Assumption"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#AbstractionLeakFinding">
+    <rdfs:label xml:lang="en">abstraction leak finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that an abstraction exposes details it should hide or fails to preserve its promised interface, contract, or invariant.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#riskAffectsObjective">
+    <rdfs:label xml:lang="en">risk affects objective</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk to an objective it threatens.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Objective"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ResearchObjective">
+    <rdfs:label xml:lang="en">research objective</rdfs:label>
+    <skos:definition xml:lang="en">An objective concerned with mathematical discovery, proof, representation search, or formalization.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Objective"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PipelineSpecification">
+    <rdfs:label xml:lang="en">pipeline specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a CI/CD, data, validation, build, or deployment pipeline.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#requiresInvariantCondition">
+    <rdfs:label xml:lang="en">requires invariant condition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a control flow, transition, process, or plan to an invariant condition it must maintain.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#InvariantCondition"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasSurfacePhenomenon">
+    <rdfs:label xml:lang="en">has surface phenomenon</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a surface phenomenon description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SurfacePhenomenonDescription"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EvidenceBackedGenerativeNecessityClaim">
+    <rdfs:label xml:lang="en">evidence-backed generative necessity claim</rdfs:label>
+    <skos:definition xml:lang="en">A generative necessity claim supported by at least one evidence artifact.</skos:definition>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="Na0b696e2aae44de78e6162ad69cf4d9f">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#GenerativeNecessityClaim"/>
+          <owl:Restriction rdf:nodeID="N3e9dde0df29e4589aa734e107f81a2f0">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#supportedByEvidence">
+                <rdfs:label xml:lang="en">supported by evidence</rdfs:label>
+                <skos:definition xml:lang="en">Relates a claim, decision, risk, assumption, finding, or assessment to supporting evidence.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+                <veritas:module xml:lang="en">evidence-validation</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#testedByTransferTest">
+    <rdfs:label xml:lang="en">tested by transfer test</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation, invariant, or claim to a transfer test specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TransferTestSpecification"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ForbiddenTransformationSpecification">
+    <rdfs:label xml:lang="en">forbidden transformation specification</rdfs:label>
+    <skos:definition xml:lang="en">A transformation specification classified as prohibited because it breaks identity, constraints, invariants, safety, or validity.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#TransformationSpecification"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRepresentationHypothesis">
+    <rdfs:label xml:lang="en">has representation hypothesis</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a representation hypothesis.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationHypothesis"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasDescription">
+    <rdfs:label xml:lang="en">has description</rdfs:label>
+    <skos:definition xml:lang="en">Relates an entity to a human-readable description string.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasSLO">
+    <rdfs:label xml:lang="en">has service-level objective</rdfs:label>
+    <skos:definition xml:lang="en">Relates a service, deployment unit, process, or plan to a service-level objective.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ServiceLevelObjective"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#transitionsTo">
+    <rdfs:label xml:lang="en">transitions to</rdfs:label>
+    <skos:definition xml:lang="en">Relates a transition specification to its target state specification.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#TransitionSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#StateSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#IncidentReport">
+    <rdfs:label xml:lang="en">incident report</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact documenting an incident process, its symptoms, causes, timeline, mitigations, and follow-up actions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Repository">
+    <rdfs:label xml:lang="en">repository</rdfs:label>
+    <skos:definition xml:lang="en">An information-bearing engineering artifact that carries source code, configuration, documentation, and related information artifacts.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ArchitecturalRisk">
+    <rdfs:label xml:lang="en">architectural risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning system shape, boundaries, dependencies, qualities, or architectural decisions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ProofArtifact">
+    <rdfs:label xml:lang="en">proof artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact containing a proof, proof sketch, formalization, or proof certificate.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#transitionsFrom">
+    <rdfs:label xml:lang="en">transitions from</rdfs:label>
+    <skos:definition xml:lang="en">Relates a transition specification to its source state specification.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#TransitionSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#StateSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ScheduleRisk">
+    <rdfs:label xml:lang="en">schedule risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning time, sequencing, delivery, scope, staffing, or coordination.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasState">
+    <rdfs:label xml:lang="en">has state</rdfs:label>
+    <skos:definition xml:lang="en">Relates a control-flow specification to a state specification.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#StateSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasConstraintGeometry">
+    <rdfs:label xml:lang="en">has constraint geometry</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a constraint geometry description.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ConstraintGeometryDescription"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#WellFormedLoopSpecification">
+    <rdfs:label xml:lang="en">well-formed loop specification</rdfs:label>
+    <skos:definition xml:lang="en">A loop specification with at least one explicit termination condition.</skos:definition>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="Nb5ae7d73a4df4cad99bf11f32cbb6328">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#LoopSpecification"/>
+          <owl:Restriction rdf:nodeID="Nf380109fbdfb42eabba387dc05930ff3">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasTerminationCondition">
+                <rdfs:label xml:lang="en">has termination condition</rdfs:label>
+                <skos:definition xml:lang="en">Relates a loop, recursive process, retry policy, search process, or plan to a termination condition.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TerminationCondition"/>
+                <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#TerminationCondition"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasSource">
+    <rdfs:label xml:lang="en">has source</rdfs:label>
+    <skos:definition xml:lang="en">Relates an artifact, claim, finding, result, or extraction to a source document.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SourceDocument"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MathematicalRisk">
+    <rdfs:label xml:lang="en">mathematical risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning mathematical validity, representation fidelity, proof status, invariant failure, or transfer failure.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InformationProcessingSystem">
+    <rdfs:label xml:lang="en">information-processing system</rdfs:label>
+    <skos:definition xml:lang="en">An artifact or system designed to execute algorithms or transform information content entities.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000117"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#observedBy">
+    <rdfs:label xml:lang="en">observed by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a process, service, deployment unit, or system to an observable signal or monitoring specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ObservableSignal"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasTaskSpecification">
+    <rdfs:label xml:lang="en">has task specification</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan to a task specification included in that plan.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Plan"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TaskSpecification"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#bearerOfCapability">
+    <rdfs:label xml:lang="en">bearer of capability</rdfs:label>
+    <skos:definition xml:lang="en">Relates an agent, artifact, component, or system to a capability it bears.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:ObjectProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasProofStatus">
+    <rdfs:label xml:lang="en">has proof status</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical claim or proof artifact to a proof-status label such as speculative, plausible, proved, formalized, false, or blocked.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#achievesObjective">
+    <rdfs:label xml:lang="en">achieves objective</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, process, representation, or result to an objective it is intended to achieve.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Objective"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasSymbolicShadow">
+    <rdfs:label xml:lang="en">has symbolic shadow</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a symbolic shadow.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SymbolicShadow"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PlanningObjective">
+    <rdfs:label xml:lang="en">planning objective</rdfs:label>
+    <skos:definition xml:lang="en">An objective concerned with sequencing, feasibility, priority, scope, or project control.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Objective"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DesignComparison">
+    <rdfs:label xml:lang="en">design comparison</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact comparing designs, plans, components, or representations by qualities, risks, capabilities, and evidence.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasTransition">
+    <rdfs:label xml:lang="en">has transition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a control-flow specification to a transition specification.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TransitionSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#VerifiedAssumption">
+    <rdfs:label xml:lang="en">verified assumption</rdfs:label>
+    <skos:definition xml:lang="en">An assumption that has at least one verification result.</skos:definition>
+    <veritas:module xml:lang="en">planning</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="Nb7541c1251c24a12b49c011475dbca5c">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#Assumption"/>
+          <owl:Restriction rdf:nodeID="N3ddeccac422d452bac27d12a6ef1b8e6">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#verifiedBy">
+                <rdfs:label xml:lang="en">verified by</rdfs:label>
+                <skos:definition xml:lang="en">Relates an assumption, claim, task, invariant, or artifact to a verification result.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#VerificationResult"/>
+                <veritas:module xml:lang="en">evidence-validation</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#VerificationResult"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRuntime">
+    <rdfs:label xml:lang="en">has runtime</rdfs:label>
+    <skos:definition xml:lang="en">Relates a deployment unit, process, or component specification to its runtime environment specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RuntimeEnvironmentSpecification"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#LogArtifact">
+    <rdfs:label xml:lang="en">log artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact recording events, messages, state changes, errors, or diagnostic information.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#monitoredBy">
+    <rdfs:label xml:lang="en">monitored by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a signal, SLO, deployment unit, service, or process to an alert specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#AlertSpecification"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ServiceSpecification">
+    <rdfs:label xml:lang="en">service specification</rdfs:label>
+    <skos:definition xml:lang="en">A software component specification describing a service boundary, responsibility, interface, deployment expectations, and runtime behavior.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#implementsContract">
+    <rdfs:label xml:lang="en">implements contract</rdfs:label>
+    <skos:definition xml:lang="en">Relates a software component, source artifact, or process to a contract specification it implements.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ContractSpecification"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#refinesPlan">
+    <rdfs:label xml:lang="en">refines plan</rdfs:label>
+    <skos:definition xml:lang="en">Relates a more specific plan to a more general or earlier plan.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Plan"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Plan"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRepresentationMap">
+    <rdfs:label xml:lang="en">has representation map</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a representation map.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationMap"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRunbook">
+    <rdfs:label xml:lang="en">has runbook</rdfs:label>
+    <skos:definition xml:lang="en">Relates an incident, alert, service, deployment unit, or operational process to a runbook.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Runbook"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ContradictionFinding">
+    <rdfs:label xml:lang="en">contradiction finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that identifies mutually inconsistent claims, constraints, assumptions, observations, or specifications.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ComplexityRisk">
+    <rdfs:label xml:lang="en">complexity risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk introduced by unnecessary coupling, conceptual surface area, branching, dependency burden, or excessive abstraction.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#acceptedByDecision">
+    <rdfs:label xml:lang="en">accepted by decision</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk to a risk acceptance decision.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RiskAcceptanceDecision"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#detectedBy">
+    <rdfs:label xml:lang="en">detected by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk, failure mode, invalid condition, or finding to a detection mechanism.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#DetectionMechanism"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#exposesInterface">
+    <rdfs:label xml:lang="en">exposes interface</rdfs:label>
+    <skos:definition xml:lang="en">Relates a software component to an interface specification it exposes.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#InterfaceSpecification"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CoverageGapFinding">
+    <rdfs:label xml:lang="en">coverage gap finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that identifies insufficient tests, evidence, observability, validation coverage, or proof coverage.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CodeChangeDescription">
+    <rdfs:label xml:lang="en">code change description</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact recording a source-code change, patch, refactor, or implementation delta.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SecurityRisk">
+    <rdfs:label xml:lang="en">security risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning confidentiality, integrity, availability, authorization, attack surface, or abuse cases.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#violatesSLO">
+    <rdfs:label xml:lang="en">violates service-level objective</rdfs:label>
+    <skos:definition xml:lang="en">Relates an incident, finding, observation, metric, or process to a violated service-level objective.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ServiceLevelObjective"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasConfidenceMeasurement">
+    <rdfs:label xml:lang="en">has confidence measurement</rdfs:label>
+    <skos:definition xml:lang="en">Relates a claim, finding, retrieval result, estimate, or decision to a confidence measurement.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ConfidenceMeasurement"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ExecutablePlan">
+    <rdfs:label xml:lang="en">executable plan</rdfs:label>
+    <skos:definition xml:lang="en">An engineering plan with at least one acceptance criterion and at least one validation check specification.</skos:definition>
+    <veritas:module xml:lang="en">planning</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="N6e85e2d8f0b241b8bbe8b71d4f3a4d8b">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringPlan"/>
+          <owl:Restriction rdf:nodeID="N7cdb3042477a4d8a9e5d06875a63303b">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasAcceptanceCriterion">
+                <rdfs:label xml:lang="en">has acceptance criterion</rdfs:label>
+                <skos:definition xml:lang="en">Relates a plan, task, objective, or change to an acceptance criterion.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#AcceptanceCriterion"/>
+                <veritas:module xml:lang="en">planning</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#AcceptanceCriterion"/>
+          </owl:Restriction>
+          <owl:Restriction rdf:nodeID="N4e0dd7ab5ee84d67a03557549ec4507a">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#validatedBy">
+                <rdfs:label xml:lang="en">validated by</rdfs:label>
+                <skos:definition xml:lang="en">Relates a plan, task, claim, artifact, process, representation, invariant, or risk to a validation check specification.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ValidationCheckSpecification"/>
+                <veritas:module xml:lang="en">evidence-validation</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#ValidationCheckSpecification"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#violatesInvariantCondition">
+    <rdfs:label xml:lang="en">violates invariant condition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a finding, path, transition, process, or observation to an invariant condition it violates.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#InvariantCondition"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InformationProcessingProcess">
+    <rdfs:label xml:lang="en">information-processing process</rdfs:label>
+    <skos:definition xml:lang="en">A planned act in which information content entities are received, manipulated, transformed, stored, or emitted.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000366"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCompressionFidelityAssessment">
+    <rdfs:label xml:lang="en">has compression fidelity assessment</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation map, compression principle, or discovery artifact to a compression fidelity assessment.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#CompressionFidelityAssessment"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#conformsToContract">
+    <rdfs:label xml:lang="en">conforms to contract</rdfs:label>
+    <skos:definition xml:lang="en">Relates an artifact, process, or component to a contract specification it conforms to.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ContractSpecification"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RetrievalResult">
+    <rdfs:label xml:lang="en">retrieval result</rdfs:label>
+    <skos:definition xml:lang="en">An evidence artifact returned by lexical, semantic, graph, or hybrid retrieval and used as context for reasoning.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#OperationalRisk">
+    <rdfs:label xml:lang="en">operational risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning deployment, runtime behavior, observability, reliability, incident response, or operations.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#BackCheckSpecification">
+    <rdfs:label xml:lang="en">back-check specification</rdfs:label>
+    <skos:definition xml:lang="en">A conformance check specification for back-checking a plan, proof, control-flow graph, assumption set, risk register, or execution path.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ConformanceCheckSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasExpressionText">
+    <rdfs:label xml:lang="en">has expression text</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow, invariant, precondition, postcondition, or formula-like artifact to its expression text.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasGenerativeNecessityClaim">
+    <rdfs:label xml:lang="en">has generative necessity claim</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact to a generative necessity claim.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#GenerativeNecessityClaim"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PackageSpecification">
+    <rdfs:label xml:lang="en">package specification</rdfs:label>
+    <skos:definition xml:lang="en">A software component specification describing a package-level unit of code or distribution.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFailureMode">
+    <rdfs:label xml:lang="en">has failure mode</rdfs:label>
+    <skos:definition xml:lang="en">Relates a risk, component, process, plan, or specification to a failure mode.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#FailureMode"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TechnicalRisk">
+    <rdfs:label xml:lang="en">technical risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning implementation feasibility, defects, integration, compatibility, performance, or maintainability.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ControlFlowRisk">
+    <rdfs:label xml:lang="en">control-flow risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning malformed planning logic, unreachable states, missing guards, missing termination conditions, or invalid transitions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MissingPreconditionFinding">
+    <rdfs:label xml:lang="en">missing precondition finding</rdfs:label>
+    <skos:definition xml:lang="en">A malformed control-flow finding that identifies a transition, action, task, or proof step lacking required preconditions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MalformedControlFlowFinding"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasInterpretabilityCertificate">
+    <rdfs:label xml:lang="en">has interpretability certificate</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation, invariant, claim, or latent structure to an interpretability certificate.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#InterpretabilityCertificate"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:AnnotationProperty rdf:about="https://github.com/daddydrac/veritas/ontology#owlDlNote">
+    <rdfs:label xml:lang="en">OWL-DL note</rdfs:label>
+    <skos:definition xml:lang="en">Explains a design choice made to preserve OWL-DL compliance.</skos:definition>
+  </owl:AnnotationProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#preservesInvariant">
+    <rdfs:label xml:lang="en">preserves invariant</rdfs:label>
+    <skos:definition xml:lang="en">Relates a representation map or transformation specification to an invariant it preserves.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Invariant"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#IncidentProcess">
+    <rdfs:label xml:lang="en">incident process</rdfs:label>
+    <skos:definition xml:lang="en">An engineering process in which a system failure, degradation, or operational disturbance occurs and is investigated or resolved.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringProcess"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ObservabilityRisk">
+    <rdfs:label xml:lang="en">observability risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning insufficient logs, metrics, traces, alerts, dashboards, runbooks, or diagnostic evidence.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRecoveryPath">
+    <rdfs:label xml:lang="en">has recovery path</rdfs:label>
+    <skos:definition xml:lang="en">Relates an error state, branch, incident, deployment unit, or control-flow specification to a recovery path.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RecoveryPath"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasComponent">
+    <rdfs:label xml:lang="en">has component</rdfs:label>
+    <skos:definition xml:lang="en">Relates a software system specification to a component specification.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareSystemSpecification"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#FailureModeCount">
+    <rdfs:label xml:lang="en">failure-mode count</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact counting or estimating distinct failure modes introduced by a design, process, component, or plan.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#runsInEnvironment">
+    <rdfs:label xml:lang="en">runs in environment</rdfs:label>
+    <skos:definition xml:lang="en">Relates a deployment unit specification or process to a runtime environment specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#RuntimeEnvironmentSpecification"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#motivatedByDecision">
+    <rdfs:label xml:lang="en">motivated by decision</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, design, constraint, or mitigation to the engineering decision motivating it.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringDecision"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringObjective">
+    <rdfs:label xml:lang="en">engineering objective</rdfs:label>
+    <skos:definition xml:lang="en">An objective concerned with architecture, implementation, deployment, reliability, maintainability, or correctness.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Objective"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#OperationalBurdenQuality">
+    <rdfs:label xml:lang="en">operational burden quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning the ongoing effort required to deploy, observe, maintain, recover, and evolve a system.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ComplexityQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SoftwareCapability">
+    <rdfs:label xml:lang="en">software capability</rdfs:label>
+    <skos:definition xml:lang="en">A capability borne by a software or information-processing component and realized in an execution or information-processing process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InvariantViolationFinding">
+    <rdfs:label xml:lang="en">invariant violation finding</rdfs:label>
+    <skos:definition xml:lang="en">A malformed control-flow finding that identifies a path or transition that violates a required invariant condition.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MalformedControlFlowFinding"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#simplerThan">
+    <rdfs:label xml:lang="en">simpler than</rdfs:label>
+    <skos:definition xml:lang="en">Relates one plan, design, component, or representation to another that it is simpler than under stated criteria.</skos:definition>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Observation">
+    <rdfs:label xml:lang="en">observation</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive evidence artifact recording observed data, behavior, output, measurement, trace, event, or example.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ResearchPlan">
+    <rdfs:label xml:lang="en">research plan</rdfs:label>
+    <skos:definition xml:lang="en">A plan for mathematical discovery, proof search, counterexample search, representation search, or formalization.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Plan"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#dependsOnComponent">
+    <rdfs:label xml:lang="en">depends on component</rdfs:label>
+    <skos:definition xml:lang="en">Relates one software component to another software component it depends on.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#SoftwareComponent"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#AgentCapability">
+    <rdfs:label xml:lang="en">agent capability</rdfs:label>
+    <skos:definition xml:lang="en">A capability borne by an agent and aligned to CCO Agent Capability.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00001379"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ResearchCapability">
+    <rdfs:label xml:lang="en">research capability</rdfs:label>
+    <skos:definition xml:lang="en">A capability for mathematical discovery, representation search, proof work, counterexample search, or formalization.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Capability"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasDesignQuality">
+    <rdfs:label xml:lang="en">has design quality</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, artifact, component, representation, process, or design to a design quality.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EvidenceBackedRisk">
+    <rdfs:label xml:lang="en">evidence-backed risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk supported by at least one evidence artifact.</skos:definition>
+    <veritas:module xml:lang="en">risk</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="Nec15b8b6afff4da3af79ac22e88d1e36">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#Risk"/>
+          <owl:Restriction rdf:nodeID="N0a2ba1d43ece4a889e47ae64d68a75a7">
+            <owl:onProperty rdf:resource="https://github.com/daddydrac/veritas/ontology#supportedByEvidence"/>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasOperationalBurden">
+    <rdfs:label xml:lang="en">has operational burden</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, design, component, service, or deployment unit to an operational burden measurement or quality.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#OperationalBurdenMeasurement"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#prescribesProcess">
+    <rdfs:label xml:lang="en">prescribes process</rdfs:label>
+    <skos:definition xml:lang="en">Relates a prescriptive artifact to a process it prescribes.</skos:definition>
+    <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringProcess"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RefactoringProcess">
+    <rdfs:label xml:lang="en">refactoring process</rdfs:label>
+    <skos:definition xml:lang="en">An implementation process intended to improve internal structure while preserving specified external behavior.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ImplementationProcess"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TraceArtifact">
+    <rdfs:label xml:lang="en">trace artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact recording a causally or temporally ordered path through components, spans, services, or processes.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasGuardCondition">
+    <rdfs:label xml:lang="en">has guard condition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a transition, branch, loop, task, or action to a guard condition.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#GuardCondition"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SimplerAlternativeAssessment">
+    <rdfs:label xml:lang="en">simpler alternative assessment</rdfs:label>
+    <skos:definition xml:lang="en">A tradeoff assessment identifying a lower-complexity plan or design that achieves equivalent objectives under stated constraints.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#TradeoffAssessment"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:AnnotationProperty rdf:about="https://github.com/daddydrac/veritas/ontology#alignmentNote">
+    <rdfs:label xml:lang="en">alignment note</rdfs:label>
+    <skos:definition xml:lang="en">Explains alignment to BFO or CCO.</skos:definition>
+  </owl:AnnotationProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MitigationProcess">
+    <rdfs:label xml:lang="en">mitigation process</rdfs:label>
+    <skos:definition xml:lang="en">A planned engineering act that realizes a mitigation specification.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#storesDataIn">
+    <rdfs:label xml:lang="en">stores data in</rdfs:label>
+    <skos:definition xml:lang="en">Relates a software component or service specification to a data store specification.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#DataStoreSpecification"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SimplicityQuality">
+    <rdfs:label xml:lang="en">simplicity quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning low unnecessary complexity, clear boundaries, and high comprehensibility while preserving required capabilities and invariants.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#equivalentObjectiveTo">
+    <rdfs:label xml:lang="en">equivalent objective to</rdfs:label>
+    <skos:definition xml:lang="en">Relates plans or designs intended to satisfy equivalent objectives.</skos:definition>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:ObjectProperty>
+  <owl:AnnotationProperty rdf:about="https://github.com/daddydrac/veritas/ontology#competencyQuestion">
+    <rdfs:label xml:lang="en">competency question</rdfs:label>
+    <skos:definition xml:lang="en">A question this ontology is intended to help answer.</skos:definition>
+  </owl:AnnotationProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InfrastructureResourceSpecification">
+    <rdfs:label xml:lang="en">infrastructure resource specification</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact describing infrastructure resources such as compute, storage, network, queues, or managed services.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#contradictedBy">
+    <rdfs:label xml:lang="en">contradicted by</rdfs:label>
+    <skos:definition xml:lang="en">Relates a claim, assumption, result, decision, or finding to contradictory evidence.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DependencyRisk">
+    <rdfs:label xml:lang="en">dependency risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk concerning internal or external dependencies, supply chain, version compatibility, availability, or coupling.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TestExecutionProcess">
+    <rdfs:label xml:lang="en">test execution process</rdfs:label>
+    <skos:definition xml:lang="en">A validation process that executes a test specification and produces results or findings.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MitigatedRisk">
+    <rdfs:label xml:lang="en">mitigated risk</rdfs:label>
+    <skos:definition xml:lang="en">A risk with at least one mitigation specification.</skos:definition>
+    <veritas:module xml:lang="en">risk</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="N48008fd10c5e49568ddb3a8778d16dc9">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#Risk"/>
+          <owl:Restriction rdf:nodeID="N3fb000eb63f04a8ba4737ff6e3a38041">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#mitigatedBy">
+                <rdfs:label xml:lang="en">mitigated by</rdfs:label>
+                <skos:definition xml:lang="en">Relates a risk to a mitigation specification.</skos:definition>
+                <rdfs:domain rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#MitigationSpecification"/>
+                <veritas:module xml:lang="en">risk</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#MitigationSpecification"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ReleaseProcess">
+    <rdfs:label xml:lang="en">release process</rdfs:label>
+    <skos:definition xml:lang="en">A planned engineering act that releases a deployment unit or versioned artifact into an environment.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasPrecondition">
+    <rdfs:label xml:lang="en">has precondition</rdfs:label>
+    <skos:definition xml:lang="en">Relates a transition, task, action, process, proof step, or deployment step to a precondition.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Precondition"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#exposesRisk">
+    <rdfs:label xml:lang="en">exposes risk</rdfs:label>
+    <skos:definition xml:lang="en">Relates a plan, task, decision, component, process, assumption, representation, or design to a risk it exposes.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#Risk"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:ObjectProperty>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#BranchSpecification">
+    <rdfs:label xml:lang="en">branch specification</rdfs:label>
+    <skos:definition xml:lang="en">A control-flow specification describing a conditional split, alternative path, exception path, or decision branch.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#WellGroundedInvariant">
+    <rdfs:label xml:lang="en">well-grounded invariant</rdfs:label>
+    <skos:definition xml:lang="en">An invariant associated with at least one explicit transformation family.</skos:definition>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+    <owl:equivalentClass>
+      <owl:Class rdf:nodeID="N3b3ebba9b4a44990a3aa72abbd1b3634">
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#Invariant"/>
+          <owl:Restriction rdf:nodeID="N62f56ab5839e4fde838b2d7ce5a1c0a0">
+            <owl:onProperty>
+              <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasTransformationFamily">
+                <rdfs:label xml:lang="en">has transformation family</rdfs:label>
+                <skos:definition xml:lang="en">Relates an invariant, claim, representation, or discovery artifact to a transformation family.</skos:definition>
+                <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#TransformationFamily"/>
+                <veritas:module xml:lang="en">mathematical-research</veritas:module>
+              </owl:ObjectProperty>
+            </owl:onProperty>
+            <owl:someValuesFrom rdf:resource="https://github.com/daddydrac/veritas/ontology#TransformationFamily"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasIdentifier">
+    <rdfs:label xml:lang="en">has identifier</rdfs:label>
+    <skos:definition xml:lang="en">Relates an entity to a local identifier string.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasVersionString">
+    <rdfs:label xml:lang="en">has version string</rdfs:label>
+    <skos:definition xml:lang="en">Relates a project-specific runtime, toolchain, dependency, or artifact to a version string without making versions part of the core ontology.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:AllDisjointClasses rdf:nodeID="N4c2352eb3e514b1098bf078f8c84ede3">
+    <owl:members rdf:parseType="Collection">
+      <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+      <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringProcess"/>
+      <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#Capability"/>
+      <rdf:Description rdf:about="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    </owl:members>
+  </owl:AllDisjointClasses>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TransferTestSpecification">
+    <rdfs:label xml:lang="en">transfer test specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying how a representation, invariant, or claim is tested beyond the examples that produced it.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RecoveryPath">
+    <rdfs:label xml:lang="en">recovery path</rdfs:label>
+    <skos:definition xml:lang="en">A control-flow specification describing a valid transition sequence from error, degraded, invalid, or exceptional states toward safe or accepted states.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InterpretabilityCertificate">
+    <rdfs:label xml:lang="en">interpretability certificate</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact explaining the human-auditable meaning of latent variables, transformations, invariants, or compression.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TestSpecification">
+    <rdfs:label xml:lang="en">test specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying an experiment, check, assertion, or validation procedure for software behavior.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#BuildArtifact">
+    <rdfs:label xml:lang="en">build artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact produced by a build process, such as an executable, image, wheel, binary, or generated package.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TerminationCondition">
+    <rdfs:label xml:lang="en">termination condition</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a condition under which a loop, recursion, retry, search, or process stops.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DataStoreSpecification">
+    <rdfs:label xml:lang="en">data store specification</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact describing a data store, its access patterns, durability, ownership, and operational constraints.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SoftwareComponent">
+    <rdfs:label xml:lang="en">software component</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact representing a logical unit of software design or implementation, distinct from a running execution process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SymbolicShadow">
+    <rdfs:label xml:lang="en">symbolic shadow</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact such as an equation, formula, diagram, theorem statement, or algorithm that records a deeper generative structure.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct">
+    <rdfs:label xml:lang="en">planned engineering act</rdfs:label>
+    <skos:definition xml:lang="en">An engineering process that is prescribed by a prescriptive artifact and performed intentionally by an agent or automated agent system.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringProcess"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000228"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#AlertSpecification">
+    <rdfs:label xml:lang="en">alert specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying detection logic and notification behavior for operational conditions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CompressionFidelityAssessment">
+    <rdfs:label xml:lang="en">compression fidelity assessment</rdfs:label>
+    <skos:definition xml:lang="en">A measurement or assessment artifact stating whether a compression preserves required invariants, constraints, recursive behavior, and transfer-relevant structure.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact">
+    <rdfs:label xml:lang="en">prescriptive artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact that prescribes an entity, process, representation, or engineering behavior.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000965"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#LatentStructureDescription">
+    <rdfs:label xml:lang="en">latent structure description</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact identifying hidden variables, modes, symmetries, sufficient statistics, attractors, or relational generators visible in a transformed representation.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DependencySpecification">
+    <rdfs:label xml:lang="en">dependency specification</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive or prescriptive artifact specifying that one component, artifact, service, process, or plan depends on another.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ValidationCheckSpecification">
+    <rdfs:label xml:lang="en">validation check specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying how to validate, verify, falsify, test, or back-check a claim, plan, artifact, behavior, or process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DesignQuality">
+    <rdfs:label xml:lang="en">design quality</rdfs:label>
+    <skos:definition xml:lang="en">A quality inhering in a design, plan, artifact, component, process, or specification and relevant to engineering judgment.</skos:definition>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000019"/>
+    <veritas:module xml:lang="en">simplicity</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SourceCodeArtifact">
+    <rdfs:label xml:lang="en">source code artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact containing source code or source-code-level representation.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RuntimeEnvironmentSpecification">
+    <rdfs:label xml:lang="en">runtime environment specification</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact describing runtime conditions, platform constraints, hardware resources, environment variables, permissions, and dependencies.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConstraintGeometryDescription">
+    <rdfs:label xml:lang="en">constraint geometry description</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact explaining how constraints limit transformations and produce symbolic shadows such as equations or laws.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Runbook">
+    <rdfs:label xml:lang="en">runbook</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying operational procedures, incident response steps, rollback steps, or recovery processes.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InterfaceSpecification">
+    <rdfs:label xml:lang="en">interface specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying the surface by which a component, service, module, or process may be used.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ImpactEstimate">
+    <rdfs:label xml:lang="en">impact estimate</rdfs:label>
+    <skos:definition xml:lang="en">An estimate artifact measuring or ranking the severity of a risk if realized.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EstimateArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SoftwareSystemSpecification">
+    <rdfs:label xml:lang="en">software system specification</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact describing a software system, its boundaries, responsibilities, components, interfaces, and behaviors.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Risk">
+    <rdfs:label xml:lang="en">risk</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive planning artifact representing a possible failure, loss, delay, invalidity, degradation, or adverse outcome that threatens an objective, process, artifact, assumption, or quality.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact">
+    <rdfs:label xml:lang="en">mathematical discovery artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact used to represent mathematical discovery as transformation, constraint, invariant, compression, recursion, necessity, proof, or transfer.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EstimateArtifact">
+    <rdfs:label xml:lang="en">estimate artifact</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact based on partial evidence or comparison with sufficiently similar cases.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00001176"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#StateSpecification">
+    <rdfs:label xml:lang="en">state specification</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact specifying a named or described state in a control-flow, plan-flow, runtime-flow, or reasoning-flow model.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConformanceCheckSpecification">
+    <rdfs:label xml:lang="en">conformance check specification</rdfs:label>
+    <skos:definition xml:lang="en">A validation check specification that prescribes checking whether an execution, plan, or implementation conforms to a specification.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#VerificationResult">
+    <rdfs:label xml:lang="en">verification result</rdfs:label>
+    <skos:definition xml:lang="en">A finding produced by a validation or verification process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SourceDocument">
+    <rdfs:label xml:lang="en">source document</rdfs:label>
+    <skos:definition xml:lang="en">An evidence artifact that serves as a source for extracted claims, observations, requirements, examples, or citations.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RepresentationHypothesis">
+    <rdfs:label xml:lang="en">representation hypothesis</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact proposing that a change of perspective, coordinate system, embedding, quotient, normal form, or latent representation may reveal simpler structure.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RepresentationMap">
+    <rdfs:label xml:lang="en">representation map</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact specifying a map from a surface description to a latent or transformed representation.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#AcceptanceCriterion">
+    <rdfs:label xml:lang="en">acceptance criterion</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying the condition under which a task, plan, change, or result is accepted.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DeploymentUnitSpecification">
+    <rdfs:label xml:lang="en">deployment unit specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive or representational artifact specifying a deployable unit, packaging boundary, image, service release, or runtime component.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#GenerativeNecessityClaim">
+    <rdfs:label xml:lang="en">generative necessity claim</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact claiming that a structure, equation, algorithm, or theorem is forced by primitives, transformations, constraints, invariants, compression, and recursion.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Assumption">
+    <rdfs:label xml:lang="en">assumption</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact accepted provisionally for planning, reasoning, or execution until verified, rejected, or revised.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Finding">
+    <rdfs:label xml:lang="en">finding</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive evidence artifact reporting a validation result, gap, contradiction, issue, risk, or inferred condition.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InformationArtifact">
+    <rdfs:label xml:lang="en">information artifact</rdfs:label>
+    <skos:definition xml:lang="en">An application-level information content entity used by research, planning, engineering, operations, or validation work.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000958"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TransformationFamily">
+    <rdfs:label xml:lang="en">transformation family</rdfs:label>
+    <skos:definition xml:lang="en">A representational artifact describing a class of admissible, forbidden, identity-preserving, or identity-destroying transformations.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ObservableSignal">
+    <rdfs:label xml:lang="en">observable signal</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive or measurement artifact emitted, recorded, or derived from runtime behavior for observability.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Invariant">
+    <rdfs:label xml:lang="en">invariant</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact stating what remains preserved under a specified transformation family.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RepresentationalArtifact">
+    <rdfs:label xml:lang="en">representational artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact that represents some entity, process, structure, pattern, or possible execution path.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00001069"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringProcess">
+    <rdfs:label xml:lang="en">engineering process</rdfs:label>
+    <skos:definition xml:lang="en">A process in which engineering, research, implementation, validation, deployment, or operation occurs.</skos:definition>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000015"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MitigationSpecification">
+    <rdfs:label xml:lang="en">mitigation specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying actions, design changes, checks, constraints, or contingencies intended to reduce a risk.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact">
+    <rdfs:label xml:lang="en">descriptive artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact that describes an entity, process, quality, observation, finding, or state of affairs.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00000853"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Objective">
+    <rdfs:label xml:lang="en">objective</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact that specifies a desired end state or desired result.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Plan">
+    <rdfs:label xml:lang="en">plan</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact that organizes tasks, decisions, assumptions, constraints, and validation checks to achieve an objective.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EvidenceArtifact">
+    <rdfs:label xml:lang="en">evidence artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact used to support, weaken, verify, invalidate, or contextualize a claim, risk, decision, assumption, plan, proof, or finding.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RiskAssessment">
+    <rdfs:label xml:lang="en">risk assessment</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact evaluating likelihood, impact, evidence, mitigation status, affected objective, and acceptance state for a risk.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TransformationSpecification">
+    <rdfs:label xml:lang="en">transformation specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive or representational artifact specifying a transformation, its domain, codomain, admissibility conditions, and preservation behavior.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ImplementationProcess">
+    <rdfs:label xml:lang="en">implementation process</rdfs:label>
+    <skos:definition xml:lang="en">A planned engineering act that creates or changes source code, configuration, tests, or build artifacts.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Capability">
+    <rdfs:label xml:lang="en">capability</rdfs:label>
+    <skos:definition xml:lang="en">A realizable entity borne by an agent, artifact, system, or component and realized in an appropriate process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000017"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ContractSpecification">
+    <rdfs:label xml:lang="en">contract specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying behavioral obligations, preconditions, postconditions, invariants, or compatibility rules.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">software-engineering</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#LikelihoodEstimate">
+    <rdfs:label xml:lang="en">likelihood estimate</rdfs:label>
+    <skos:definition xml:lang="en">An estimate artifact measuring or ranking the likelihood of a risk or possible process.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EstimateArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CompressionPrinciple">
+    <rdfs:label xml:lang="en">compression principle</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact explaining what complexity is reduced and what transformation-relevant structure is preserved.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#CapabilityToComplexityRatio">
+    <rdfs:label xml:lang="en">capability-to-complexity ratio</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact comparing delivered capability against introduced complexity.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ServiceLevelObjective">
+    <rdfs:label xml:lang="en">service-level objective</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive or measurement artifact specifying target reliability, availability, latency, durability, or user-facing quality.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification">
+    <rdfs:label xml:lang="en">control-flow specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact representing allowed states, transitions, branches, loops, guards, invariants, termination conditions, and recovery paths.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ComplexityQuality">
+    <rdfs:label xml:lang="en">complexity quality</rdfs:label>
+    <skos:definition xml:lang="en">A design quality concerning conceptual surface area, coupling, branching, operational burden, or cognitive burden.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DesignQuality"/>
+    <veritas:module xml:lang="en">simplicity-design-quality</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact">
+    <rdfs:label xml:lang="en">measurement artifact</rdfs:label>
+    <skos:definition xml:lang="en">An information artifact that measures or estimates some quality, risk, cost, confidence, or priority.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://www.commoncoreontologies.org/ont00001163"/>
+    <veritas:module xml:lang="en">core</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringPlan">
+    <rdfs:label xml:lang="en">engineering plan</rdfs:label>
+    <skos:definition xml:lang="en">A plan for building, changing, validating, deploying, or operating an engineered system.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Plan"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConformanceCheckProcess">
+    <rdfs:label xml:lang="en">conformance check process</rdfs:label>
+    <skos:definition xml:lang="en">A validation process that checks conformance to a control-flow, contract, plan, or behavior specification.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PlannedEngineeringAct"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConfidenceMeasurement">
+    <rdfs:label xml:lang="en">confidence measurement</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact representing confidence in a claim, finding, estimate, classification, retrieval result, or validation outcome.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#InvariantCondition">
+    <rdfs:label xml:lang="en">invariant condition</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a condition that must remain true across specified transitions or processes.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TradeoffAssessment">
+    <rdfs:label xml:lang="en">tradeoff assessment</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact comparing competing qualities, objectives, risks, costs, or design options.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Postcondition">
+    <rdfs:label xml:lang="en">postcondition</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying what must hold after a transition, action, task, proof step, deployment, or process completes.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#GuardCondition">
+    <rdfs:label xml:lang="en">guard condition</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying when a transition, branch, loop, task, or action is permitted.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#DetectionMechanism">
+    <rdfs:label xml:lang="en">detection mechanism</rdfs:label>
+    <skos:definition xml:lang="en">A specification, artifact, process, signal, or validation check used to detect a risk, failure mode, or invalid condition.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#InformationArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#EngineeringDecision">
+    <rdfs:label xml:lang="en">engineering decision</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact recording a selected option, rejected alternatives, motivations, constraints, and consequences.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TransitionSpecification">
+    <rdfs:label xml:lang="en">transition specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a permitted or forbidden transition between states, including guards, preconditions, postconditions, and effects.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#TaskSpecification">
+    <rdfs:label xml:lang="en">task specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying a task to be performed as part of a plan.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#SurfacePhenomenonDescription">
+    <rdfs:label xml:lang="en">surface phenomenon description</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact representing observed mathematical or computational behavior before treating the observed representation as fundamental.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#Precondition">
+    <rdfs:label xml:lang="en">precondition</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive artifact specifying what must hold before a transition, action, task, proof step, deployment, or process is valid.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RecursiveClosureBehavior">
+    <rdfs:label xml:lang="en">recursive closure behavior</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact describing behavior under repeated transformation, composition, iteration, self-application, closure, fixed points, or obstruction.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MathematicalDiscoveryArtifact"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#RiskAcceptanceDecision">
+    <rdfs:label xml:lang="en">risk acceptance decision</rdfs:label>
+    <skos:definition xml:lang="en">An engineering decision explicitly accepting a risk under stated assumptions, constraints, owner, and review conditions.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#EngineeringDecision"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#MalformedControlFlowFinding">
+    <rdfs:label xml:lang="en">malformed control-flow finding</rdfs:label>
+    <skos:definition xml:lang="en">A finding that identifies malformed, incomplete, unsafe, or contradictory control-flow structure.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#Finding"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#ConstraintSpecification">
+    <rdfs:label xml:lang="en">constraint specification</rdfs:label>
+    <skos:definition xml:lang="en">A prescriptive or descriptive artifact specifying a limit on a design, process, plan, representation, or transformation.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#PrescriptiveArtifact"/>
+    <veritas:module xml:lang="en">planning</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#FailureMode">
+    <rdfs:label xml:lang="en">failure mode</rdfs:label>
+    <skos:definition xml:lang="en">A descriptive artifact specifying a possible way a system, plan, process, proof, representation, or control flow can fail.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#DescriptiveArtifact"/>
+    <veritas:module xml:lang="en">risk</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#LoopSpecification">
+    <rdfs:label xml:lang="en">loop specification</rdfs:label>
+    <skos:definition xml:lang="en">A control-flow specification describing repeated execution, recurrence, retry, recursion, iteration, or self-application.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ControlFlowSpecification"/>
+    <veritas:module xml:lang="en">control-flow-correctness</veritas:module>
+  </owl:Class>
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#OperationalBurdenMeasurement">
+    <rdfs:label xml:lang="en">operational burden measurement</rdfs:label>
+    <skos:definition xml:lang="en">A measurement artifact estimating human, automation, cognitive, deployment, maintenance, or incident-response cost.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#MeasurementArtifact"/>
+    <veritas:module xml:lang="en">devops-sre</veritas:module>
+  </owl:Class>
+
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasText">
+    <rdfs:label xml:lang="en">has text</rdfs:label>
+    <skos:definition xml:lang="en">Relates an evidence artifact, chunk, or source artifact to extracted text.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasOrdinal">
+    <rdfs:label xml:lang="en">has ordinal</rdfs:label>
+    <skos:definition xml:lang="en">Relates an ordered artifact such as a chunk to its integer sequence number.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasContentHash">
+    <rdfs:label xml:lang="en">has content hash</rdfs:label>
+    <skos:definition xml:lang="en">Relates a source artifact to a content hash used for reproducibility and deduplication.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasSourceUrl">
+    <rdfs:label xml:lang="en">has source URL</rdfs:label>
+    <skos:definition xml:lang="en">Relates a source artifact to the URL from which it was retrieved.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#anyURI"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasRawExpressionText">
+    <rdfs:label xml:lang="en">has raw expression text</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the raw expression text extracted from a source document.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaSource">
+    <rdfs:label xml:lang="en">has formula source</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the extraction source or subsystem that produced it.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaPattern">
+    <rdfs:label xml:lang="en">has formula pattern</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the extraction pattern that detected it.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasEmbeddingModel">
+    <rdfs:label xml:lang="en">has embedding model</rdfs:label>
+    <skos:definition xml:lang="en">Relates an indexed evidence artifact to the embedding model used to generate its vector representation.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">retrieval-memory</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasEmbeddingNorm">
+    <rdfs:label xml:lang="en">has embedding norm</rdfs:label>
+    <skos:definition xml:lang="en">Relates an indexed evidence artifact to the L2 norm of its embedding vector after normalization.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <veritas:module xml:lang="en">retrieval-memory</veritas:module>
+  </owl:DatatypeProperty>
+
+</rdf:RDF>

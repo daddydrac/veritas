@@ -1,0 +1,8 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?formula ?expr ?source
+WHERE {
+  ?formula a veritas:SymbolicShadow ;
+           veritas:hasExpressionText ?expr .
+  OPTIONAL { ?formula veritas:derivedFrom ?source . }
+}
+LIMIT 50

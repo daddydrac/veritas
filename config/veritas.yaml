@@ -1,0 +1,128 @@
+project:
+  name: veritas
+  namespace: https://github.com/daddydrac/veritas/ontology#
+  description: Math-heavy evidence-backed research and development software-engineering agent.
+
+services:
+  opensearch:
+    url_env: VERITAS_OPENSEARCH_URL
+    index_env: VERITAS_OPENSEARCH_INDEX
+    vector:
+      enabled: true
+      field: embedding
+      engine: faiss
+      method: hnsw
+      space_type: cosinesimil
+      dimension: 768
+      m: 24
+      ef_construction: 128
+      ef_search: 100
+      normalize: true
+      norm_tolerance: 0.001
+  fuseki:
+    base_url_env: VERITAS_FUSEKI_BASE_URL
+    query_url_env: VERITAS_FUSEKI_QUERY_URL
+    update_url_env: VERITAS_FUSEKI_UPDATE_URL
+    graph_url_env: VERITAS_FUSEKI_GRAPH_URL
+  embedding:
+    provider: http
+    url_env: VERITAS_EMBEDDING_URL
+    model_env: VERITAS_EMBEDDING_MODEL
+    health_path: /health
+    embed_path: /embed
+    cosine_path: /cosine
+    default_model: Muennighoff/SBERT-base-nli-v2
+    dimension: 768
+    normalize: true
+    batch_size: 16
+    cosine_eval: true
+    include_formula_text: true
+    include_title: true
+    include_metadata_summary: true
+    norm_tolerance: 0.001
+  vector_memory:
+    provider: opensearch-faiss-hnsw
+    collection: veritas-research-chunks
+  model:
+    provider_env: VERITAS_MODEL_PROVIDER
+    model_name_env: VERITAS_MODEL_NAME
+    embedding_model_env: VERITAS_EMBEDDING_MODEL
+
+retrieval:
+  default_mode: hybrid
+  lexical_weight: 0.45
+  vector_weight: 0.55
+  top_k: 10
+  require_embedding_norm: true
+  minimum_embedding_norm: 0.999
+  maximum_embedding_norm: 1.001
+  lexical_fields:
+    - text^3
+    - title^4
+    - formulas.latex^5
+    - metadata.summary^2
+
+ingestion:
+  arxiv:
+    api_url: https://export.arxiv.org/api/query
+    default_query: cat:cs.AI OR cat:cs.LG OR cat:math.OC
+    max_results: 5
+    sort_by: submittedDate
+    sort_order: descending
+  pdf:
+    parser: docling
+    fallback_parser: pypdf
+    extract_formulas: true
+    extract_tables: true
+    preserve_equation_context: true
+    formula_context_window_chars: 650
+  chunking:
+    target_chars: 1800
+    overlap_chars: 250
+    hard_max_chars: 2800
+    keep_formulas_with_context: true
+    formula_markers:
+      - "$$"
+      - "\\["
+      - "\\begin{equation}"
+      - "\\begin{align}"
+      - "\\begin{gather}"
+  outputs:
+    raw_pdf_dir: /workspace/data/papers
+    docling_dir: /workspace/data/docling
+    chunks_dir: /workspace/data/chunks
+
+ontology:
+  file: /workspace/ontology/veritas.owl
+  graph_uri: https://github.com/daddydrac/veritas/graph/research
+  ontology_graph_uri: https://github.com/daddydrac/veritas/graph/ontology
+  prefixes:
+    veritas: https://github.com/daddydrac/veritas/ontology#
+    rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#
+    rdfs: http://www.w3.org/2000/01/rdf-schema#
+    owl: http://www.w3.org/2002/07/owl#
+    xsd: http://www.w3.org/2001/XMLSchema#
+
+codegen:
+  default_language: rust
+  allowed_languages: [rust, python, cuda, cpp, julia, typescript]
+  package_outputs_dir: /workspace/data/generated
+  require_tests: true
+  require_readme: true
+  require_runtime_spec: true
+  require_validation_report: true
+  gpu:
+    enabled: true
+    strategy: dynamic
+    supported_backends: [cuda, candle, burn, tch, wgpu, cpu]
+
+cli:
+  logo: veritas
+  tagline: Math heavy evidence backed research and development software engineering agent.
+  first_run_prompts: true
+
+validation:
+  require_evidence: true
+  require_acceptance_criteria: true
+  require_control_flow_backcheck: true
+  require_risk_register: true

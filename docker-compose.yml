@@ -1,0 +1,177 @@
+name: ${COMPOSE_PROJECT_NAME:-veritas}
+
+x-veritas-env: &veritas-env
+  VERITAS_CONFIG: ${VERITAS_CONFIG:-/workspace/config/veritas.yaml}
+  VERITAS_OPENSEARCH_URL: http://opensearch:9200
+  VERITAS_OPENSEARCH_INDEX: ${VERITAS_OPENSEARCH_INDEX:-veritas-papers}
+  VERITAS_FUSEKI_BASE_URL: http://fuseki:3030
+  VERITAS_FUSEKI_QUERY_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/sparql
+  VERITAS_FUSEKI_UPDATE_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/update
+  VERITAS_FUSEKI_GRAPH_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/data
+  VERITAS_FUSEKI_PING_URL: http://fuseki:3030/$$/ping
+  VERITAS_QDRANT_URL: http://qdrant:6333
+  VERITAS_MODEL_PROVIDER: ${VERITAS_MODEL_PROVIDER:-ollama}
+  VERITAS_MODEL_NAME: ${VERITAS_MODEL_NAME:-qwen2.5-coder:7b}
+  VERITAS_EMBEDDING_MODEL: ${VERITAS_EMBEDDING_MODEL:-Muennighoff/SBERT-base-nli-v2}
+  VERITAS_EMBEDDING_URL: http://embedding:8090
+  VERITAS_OPENSEARCH_VECTOR_FIELD: ${VERITAS_OPENSEARCH_VECTOR_FIELD:-embedding}
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.5
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-VeritasAdmin123!}
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ports:
+      - "${VERITAS_OPENSEARCH_PORT:-9200}:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.5
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "${VERITAS_OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  fuseki:
+    image: stain/jena-fuseki:5.2.0
+    environment:
+      ADMIN_PASSWORD: ${VERITAS_FUSEKI_ADMIN_PASSWORD:-admin}
+      FUSEKI_DATASET_1: ${VERITAS_FUSEKI_DATASET:-veritas}
+    ports:
+      - "${VERITAS_FUSEKI_PORT:-3030}:3030"
+    volumes:
+      - fuseki-data:/fuseki
+      - ./packages/ontology:/workspace/ontology:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3030/$$/ping >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "${VERITAS_QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  embedding:
+    build:
+      context: .
+      dockerfile: services/embedding/Dockerfile
+    environment:
+      VERITAS_EMBEDDING_MODEL: ${VERITAS_EMBEDDING_MODEL:-Muennighoff/SBERT-base-nli-v2}
+      VERITAS_EMBEDDING_NORMALIZE: ${VERITAS_EMBEDDING_NORMALIZE:-true}
+      VERITAS_EMBEDDING_DEVICE: ${VERITAS_EMBEDDING_DEVICE:-auto}
+      VERITAS_EMBEDDING_BATCH_SIZE: ${VERITAS_EMBEDDING_BATCH_SIZE:-16}
+      VERITAS_EMBEDDING_PORT: 8090
+      HF_HOME: /models/huggingface
+      TRANSFORMERS_CACHE: /models/huggingface
+    ports:
+      - "${VERITAS_EMBEDDING_PORT:-8090}:8090"
+    volumes:
+      - hf-cache:/models/huggingface
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3).read()"
+      interval: 20s
+      timeout: 10s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      <<: *veritas-env
+      VERITAS_API_PORT: ${VERITAS_API_PORT:-8080}
+    ports:
+      - "${VERITAS_API_PORT:-8080}:8080"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      fuseki:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      embedding:
+        condition: service_healthy
+
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    working_dir: /workspace
+    environment:
+      VERITAS_API_URL: http://api:8080
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      api:
+        condition: service_started
+    profiles: ["tools"]
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    environment:
+      <<: *veritas-env
+    volumes:
+      - ./data:/workspace/data
+      - ./config:/workspace/config:ro
+      - ./packages/ontology:/workspace/ontology
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      fuseki:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  reasoner:
+    build:
+      context: .
+      dockerfile: services/reasoner/Dockerfile
+      args:
+        OPENLLET_VERSION: ${OPENLLET_VERSION:-2.6.5}
+    volumes:
+      - ./packages/ontology:/workspace/ontology
+      - ./data/ontology:/workspace/output
+    profiles: ["tools"]
+
+  ollama:
+    image: ollama/ollama:0.5.7
+    ports:
+      - "${VERITAS_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    gpus:
+      - device_ids: ["${VERITAS_GPU_DEVICE_ID:-0}"]
+        capabilities: ["gpu"]
+    profiles: ["gpu"]
+
+volumes:
+  opensearch-data:
+  fuseki-data:
+  qdrant-data:
+  ollama-data:
+  hf-cache:
