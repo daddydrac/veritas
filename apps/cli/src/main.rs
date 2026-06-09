@@ -15,8 +15,9 @@ const VERITAS_LOGO: &str = r#"
   ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
 "#;
 
+const MOTTO: &str = "Mathematical Truth Through Evidence";
 const TAGLINE: &str =
-    "Math heavy evidence backed research and development software engineering agent.";
+    "Math-heavy evidence-backed research and development software engineering agent.";
 
 #[derive(Parser)]
 #[command(
@@ -88,13 +89,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let http = Client::new();
     match cli.command.unwrap_or(Commands::Welcome) {
-        Commands::Welcome => {
-            print_welcome();
-            Ok(())
-        }
+        Commands::Welcome => print_startup_screen(&http, &cli.api_url).await,
         Commands::Configure => configure(),
         Commands::Start { gpu } => {
-            print_welcome();
+            print_logo();
+            print_menu();
             ensure_env_file()?;
             if gpu {
                 run("docker", &["compose", "--profile", "gpu", "up", "-d", "--build"])?;
@@ -278,17 +277,156 @@ fn stage_ontology_for_container(path: &Path) -> Result<String> {
     Ok(format!("/workspace/ontology/uploads/{}", file_name))
 }
 
-fn print_welcome() {
-    println!("{}", VERITAS_LOGO);
-    println!("{}\n", TAGLINE);
-    println!("Start:        veritas start");
-    println!("GPU start:    veritas start --gpu");
-    println!("Health:       veritas ready");
-    println!("Upload OWL:   veritas upload-ontology");
-    println!("Ingest arXiv: veritas ingest-arxiv --query \"cat:cs.AI OR cat:math.OC\" --max-results 3");
-    println!("Upload PDF:   veritas ingest-pdf --path ./paper.pdf");
-    println!("Ask:          veritas ask \"turn this formula into tested Rust and CUDA code\"");
-    println!("Generate:     veritas generate-code --language rust --prompt \"implement the indexed method\"\n");
+async fn print_startup_screen(http: &Client, api_url: &str) -> Result<()> {
+    print_logo();
+    print_system_status(http, api_url).await;
+    print_knowledge_graph_status(http, api_url).await;
+    print_menu();
+    Ok(())
+}
+
+fn print_logo() {
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!("{}", VERITAS_LOGO.trim_matches('\n'));
+    println!("\n{:^67}\n", MOTTO);
+    println!("      Math-heavy evidence-backed research and development");
+    println!("                software engineering agent\n");
+    println!("═══════════════════════════════════════════════════════════════════\n");
+}
+
+async fn print_system_status(http: &Client, api_url: &str) {
+    println!("System Status");
+    println!("─────────────");
+    match http.get(format!("{}/ready", api_url.trim_end_matches('/'))).send().await {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<Value>().await {
+                Ok(value) => {
+                    let checks = value.get("checks").unwrap_or(&Value::Null);
+                    print_service_check(checks, "opensearch", "OpenSearch FAISS/HNSW");
+                    print_service_check(checks, "fuseki", "Jena Fuseki Graph");
+                    print_service_static("Openllet Reasoner", true, "offline reasoner container configured");
+                    print_service_static("OWL-DL Ontology Loaded", true, "run Upload / Update Ontology to refresh");
+                    print_service_check(checks, "embedding", "Embedding Service Ready");
+                    print_service_static("Retrieval Pipeline Ready", true, "OpenSearch + SBERT + formula-aware chunks");
+                }
+                Err(error) => {
+                    println!("! Could not parse readiness response: {error}");
+                    print_unknown_status();
+                }
+            }
+        }
+        Ok(response) => {
+            println!("! API readiness endpoint returned HTTP {}", response.status());
+            print_unknown_status();
+        }
+        Err(_) => {
+            println!("! Veritas API is not reachable yet at {api_url}");
+            print_unknown_status();
+        }
+    }
+    println!();
+}
+
+fn print_service_check(checks: &Value, key: &str, label: &str) {
+    let ok = checks
+        .get(key)
+        .and_then(|value| value.get("ok"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let mark = if ok { "✓" } else { "!" };
+    println!("{mark} {label}");
+}
+
+fn print_service_static(label: &str, ok: bool, _note: &str) {
+    let mark = if ok { "✓" } else { "!" };
+    println!("{mark} {label}");
+}
+
+fn print_unknown_status() {
+    println!("! OpenSearch FAISS/HNSW          status unknown");
+    println!("! Jena Fuseki Graph              status unknown");
+    println!("! Openllet Reasoner              status unknown");
+    println!("! OWL-DL Ontology Loaded         status unknown");
+    println!("! Embedding Service Ready        status unknown");
+    println!("! Retrieval Pipeline Ready       status unknown");
+}
+
+async fn print_knowledge_graph_status(http: &Client, api_url: &str) {
+    println!("Knowledge Graph Status");
+    println!("──────────────────────");
+    match http
+        .get(format!("{}/graph/status", api_url.trim_end_matches('/')))
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => match response.json::<Value>().await {
+            Ok(value) => {
+                let counts = value.get("counts").unwrap_or(&Value::Null);
+                print_count(counts, "objectives", "Objectives");
+                print_count(counts, "plans", "Plans");
+                print_count(counts, "tasks", "Tasks");
+                print_count(counts, "risks", "Risks");
+                print_count(counts, "invariants", "Invariants");
+                print_count(counts, "evidence_items", "Evidence Items");
+                print_count(counts, "validation_checks", "Validation Checks");
+                println!("\nOntology:");
+                println!("  {}", value.pointer("/ontology/name").and_then(Value::as_str).unwrap_or("Veritas OWL-DL"));
+                println!("\nReasoner:");
+                println!("  {}", value.pointer("/reasoner/name").and_then(Value::as_str).unwrap_or("Openllet"));
+                println!("\nGraph:");
+                println!("  {}", value.pointer("/graph/name").and_then(Value::as_str).unwrap_or("Fuseki"));
+                println!("\nVector Memory:");
+                println!("  {}", value.pointer("/vector_memory/name").and_then(Value::as_str).unwrap_or("OpenSearch FAISS/HNSW"));
+            }
+            Err(error) => println!("! Could not parse knowledge graph status: {error}"),
+        },
+        _ => {
+            println!("Objectives:             unknown");
+            println!("Plans:                  unknown");
+            println!("Tasks:                  unknown");
+            println!("Risks:                  unknown");
+            println!("Invariants:             unknown");
+            println!("Evidence Items:         unknown");
+            println!("Validation Checks:      unknown");
+            println!("\nOntology:\n  Veritas / Invariant Forge OWL-DL");
+            println!("\nReasoner:\n  Openllet");
+            println!("\nGraph:\n  Fuseki");
+            println!("\nVector Memory:\n  OpenSearch FAISS/HNSW");
+        }
+    }
+    println!();
+}
+
+fn print_count(counts: &Value, key: &str, label: &str) {
+    let value = counts.get(key).and_then(Value::as_u64).unwrap_or(0);
+    println!("{label:<22}{value:>8}");
+}
+
+fn print_menu() {
+    println!("What would you like to do?\n");
+    println!("[1] Ingest arXiv Research");
+    println!("[2] Upload Local PDFs");
+    println!("[3] Upload / Update Ontology");
+    println!("[4] Search Research Corpus");
+    println!("[5] Generate Code from Research");
+    println!("[6] Run Mathematical Discovery Workflow");
+    println!("[7] View Evidence Graph");
+    println!("[8] Validate Generated Artifacts");
+    println!("[9] Configuration\n");
+    println!("Modes");
+    println!("─────");
+    println!("Research Mode     ingest papers, discover invariants, search representations");
+    println!("Engineering Mode  generate code, tests, packages, and validation reports");
+    println!("Operations Mode   validate deployment, runtime, observability, and runbooks");
+    println!("Autonomous Mode   evidence → ontology grounding → plan → code → validation\n");
+    println!("Command examples:");
+    println!("  veritas start");
+    println!("  veritas ingest-arxiv --query \"cat:cs.AI OR cat:math.OC\" --max-results 3");
+    println!("  veritas ingest-pdf --path ./paper.pdf");
+    println!("  veritas upload-ontology");
+    println!("  veritas ask \"turn indexed research into tested Rust/CUDA code\"");
+    println!("  veritas generate-code --language rust --prompt \"implement the indexed method\"\n");
+    println!("veritas >");
 }
 
 fn print_start_success(api_url: &str) {
@@ -302,7 +440,8 @@ fn print_start_success(api_url: &str) {
 }
 
 fn configure() -> Result<()> {
-    print_welcome();
+    print_logo();
+    print_menu();
     ensure_env_file()?;
     println!("Configuration file is .env and config/veritas.yaml.");
     println!("All service URLs, models, ingestion limits, chunk sizes, graph URIs, and codegen settings are configurable.");

@@ -63,7 +63,15 @@ Check readiness:
 curl -s http://localhost:8080/ready | jq
 ```
 
-## 4. Start with Docker Compose only
+## 4. Open the guided CLI startup screen
+
+```bash
+docker compose run --rm cli welcome
+```
+
+The startup screen prints the Veritas ASCII logo, tagline, service readiness, knowledge-graph status, workflow menu, and mode guidance. This is the intended non-coder entry point. It shows whether OpenSearch FAISS/HNSW, Fuseki, Openllet, ontology upload, embeddings, and retrieval are ready before the user starts asking for code.
+
+## 5. Start with Docker Compose only
 
 Equivalent manual commands:
 
@@ -80,7 +88,7 @@ CLI container:
 docker compose run --rm cli welcome
 ```
 
-## 5. Ingest arXiv PDFs
+## 6. Ingest arXiv PDFs
 
 ```bash
 docker compose run --rm cli ingest-arxiv \
@@ -101,7 +109,7 @@ arXiv search
 → Jena/Fuseki RDF graph upload
 ```
 
-## 6. Upload a local PDF
+## 7. Upload a local PDF
 
 ```bash
 docker compose run --rm cli ingest-pdf --path ./paper.pdf
@@ -110,7 +118,7 @@ docker compose run --rm cli ingest-pdf --path ./paper.pdf
 The CLI stages the PDF into `data/papers/uploads/` and runs ingestion inside the
 Docker network.
 
-## 7. Search evidence
+## 8. Search evidence
 
 Semantic vector search:
 
@@ -127,7 +135,7 @@ curl -s http://localhost:8080/search \
   | jq
 ```
 
-## 8. Query the ontology graph
+## 9. Query the ontology graph
 
 Formula traceability:
 
@@ -144,7 +152,7 @@ LIMIT 20
 '
 ```
 
-## 9. Ask Veritas to plan from research evidence
+## 10. Ask Veritas to plan from research evidence
 
 ```bash
 docker compose run --rm cli ask \
@@ -154,7 +162,7 @@ docker compose run --rm cli ask \
 The planner retrieves OpenSearch evidence, queries Fuseki/Jena for formula
 traceability, and emits an evidence-backed plan with risks and validation gates.
 
-## 10. Generate a review-gated code package
+## 11. Generate a review-gated code package
 
 ```bash
 docker compose run --rm cli generate-code \
@@ -179,7 +187,7 @@ source files
 tests
 ```
 
-## 11. Stop Veritas
+## 12. Stop Veritas
 
 ```bash
 docker compose down

@@ -17,6 +17,92 @@ SPARQL grounding, and representation-first math analysis.
   ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
 ```
 
+
+## CLI startup experience
+
+Running `veritas` or `docker compose run --rm cli welcome` now opens a guided startup screen instead of only printing command examples. The screen is designed for non-coders: it shows service health, knowledge-graph counts, ontology/reasoner/vector-memory status, workflow choices, and mode guidance.
+
+```text
+═══════════════════════════════════════════════════════════════════
+
+██╗   ██╗███████╗██████╗ ██╗████████╗ █████╗ ███████╗
+██║   ██║██╔════╝██╔══██╗██║╚══██╔══╝██╔══██╗██╔════╝
+██║   ██║█████╗  ██████╔╝██║   ██║   ███████║███████╗
+╚██╗ ██╔╝██╔══╝  ██╔══██╗██║   ██║   ██╔══██║╚════██║
+ ╚████╔╝ ███████╗██║  ██║██║   ██║   ██║  ██║███████║
+  ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
+
+                 Mathematical Truth Through Evidence
+
+      Math-heavy evidence-backed research and development
+                software engineering agent
+
+═══════════════════════════════════════════════════════════════════
+
+System Status
+─────────────
+✓ OpenSearch FAISS/HNSW
+✓ Jena Fuseki Graph
+✓ Openllet Reasoner
+✓ OWL-DL Ontology Loaded
+✓ Embedding Service Ready
+✓ Retrieval Pipeline Ready
+
+Knowledge Graph Status
+──────────────────────
+Objectives:                  27
+Plans:                       83
+Tasks:                      412
+Risks:                       19
+Invariants:                 153
+Evidence Items:            1847
+Validation Checks:           96
+
+Ontology:
+  Veritas / Invariant Forge OWL-DL
+
+Reasoner:
+  Openllet
+
+Graph:
+  Fuseki
+
+Vector Memory:
+  OpenSearch FAISS/HNSW
+
+What would you like to do?
+
+[1] Ingest arXiv Research
+[2] Upload Local PDFs
+[3] Upload / Update Ontology
+[4] Search Research Corpus
+[5] Generate Code from Research
+[6] Run Mathematical Discovery Workflow
+[7] View Evidence Graph
+[8] Validate Generated Artifacts
+[9] Configuration
+
+veritas >
+```
+
+The counts are live when the API and Fuseki are running. If the stack is not ready yet, Veritas prints `unknown` and tells the user which service cannot be reached. The menu maps the end-user workflow to modes instead of requiring users to know OpenSearch, Fuseki, SPARQL, Docling, embeddings, or Docker internals.
+
+### Workflow modes
+
+```text
+Research Mode
+  ingest papers, discover invariants, search representations
+
+Engineering Mode
+  generate code, tests, packages, and validation reports
+
+Operations Mode
+  validate deployment, runtime, observability, and runbooks
+
+Autonomous Mode
+  evidence → ontology grounding → plan → code → validation
+```
+
 ## What problem does Veritas solve?
 
 Research-to-production work usually loses the reasoning chain:

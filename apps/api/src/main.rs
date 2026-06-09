@@ -77,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/graph/status", get(graph_status))
         .route("/sparql", post(sparql))
         .route("/search", post(search))
         .route("/plan", post(plan))
@@ -130,6 +131,87 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "help": if ok { "All required services are reachable." } else { "Run `docker compose ps` and `docker compose logs --tail=200` to locate the failing service." }
         })),
     )
+}
+
+
+async fn graph_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut warnings: Vec<Value> = Vec::new();
+    let counts = json!({
+        "objectives": sparql_count(&state, "Objective", &mut warnings).await.unwrap_or(0),
+        "plans": sparql_count(&state, "Plan", &mut warnings).await.unwrap_or(0),
+        "tasks": sparql_count(&state, "TaskSpecification", &mut warnings).await.unwrap_or(0),
+        "risks": sparql_count(&state, "Risk", &mut warnings).await.unwrap_or(0),
+        "invariants": sparql_count(&state, "Invariant", &mut warnings).await.unwrap_or(0),
+        "evidence_items": sparql_count(&state, "EvidenceArtifact", &mut warnings).await.unwrap_or(0),
+        "validation_checks": sparql_count(&state, "ValidationCheckSpecification", &mut warnings).await.unwrap_or(0),
+    });
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "counts": counts,
+            "ontology": {
+                "name": "Veritas / Invariant Forge OWL-DL",
+                "namespace": "https://github.com/daddydrac/veritas/ontology#"
+            },
+            "reasoner": {"name": "Openllet"},
+            "graph": {"name": "Fuseki", "query_url": state.fuseki_query_url},
+            "vector_memory": {"name": "OpenSearch FAISS/HNSW", "index": state.opensearch_index},
+            "warnings": warnings
+        })),
+    )
+}
+
+async fn sparql_count(state: &AppState, class_name: &str, warnings: &mut Vec<Value>) -> Option<u64> {
+    let query = format!(
+        "PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>\nSELECT (COUNT(?s) AS ?count) WHERE {{ ?s a veritas:{class_name} . }}"
+    );
+    let response = match state
+        .http
+        .post(&state.fuseki_query_url)
+        .header("accept", "application/sparql-results+json")
+        .form(&[("query", query)])
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            warnings.push(json!({
+                "stage": "graph_status.transport",
+                "class": class_name,
+                "message": format!("Fuseki count query failed before response: {error}"),
+                "remediation": "Start Fuseki and upload the ontology with `veritas upload-ontology`."
+            }));
+            return None;
+        }
+    };
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
+        warnings.push(json!({
+            "stage": "graph_status.upstream",
+            "class": class_name,
+            "message": format!("Fuseki count query returned HTTP {status}: {}", text.chars().take(300).collect::<String>()),
+            "remediation": "Verify the Veritas dataset and ontology graph are loaded."
+        }));
+        return None;
+    }
+    let payload: Value = match response.json().await {
+        Ok(value) => value,
+        Err(error) => {
+            warnings.push(json!({
+                "stage": "graph_status.parse",
+                "class": class_name,
+                "message": format!("Fuseki count query response could not be decoded: {error}"),
+                "remediation": "Check Fuseki SPARQL result format."
+            }));
+            return None;
+        }
+    };
+    payload
+        .pointer("/results/bindings/0/count/value")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<u64>().ok())
 }
 
 async fn probe(http: &Client, url: &str, service: &str) -> Value {
