@@ -72,3 +72,32 @@ Run on a Docker host:
 docker compose run --rm cli ask "turn indexed research into tested Rust code"
 docker compose run --rm cli generate-code --language rust --prompt "implement the strongest indexed method"
 ```
+
+## Model serving update
+
+Veritas now uses vLLM as the model serving layer. The Rust API and CLI call
+OpenAI-compatible vLLM endpoints for planner, code, and math roles. Hugging Face
+model IDs are configurable through `.env`, `config/veritas.yaml`, and the
+interactive `veritas init` wizard.
+
+Default models:
+
+```text
+Planner:       Qwen/Qwen2.5-Coder-7B-Instruct
+Code primary:  Qwen/Qwen2.5-Coder-14B-Instruct
+Code fallback: deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+Math default:  allenai/Olmo-3-7B-Instruct
+Math large:    allenai/Olmo-3.1-32B-Instruct
+Embeddings:    Muennighoff/SBERT-base-nli-v2
+Ontology:      Openllet + Jena SPARQL
+```
+
+New CLI/API surface:
+
+```text
+veritas init
+veritas models
+veritas chat --role planner "..."
+GET  /models
+POST /llm/chat
+```

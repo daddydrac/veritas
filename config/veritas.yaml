@@ -2,7 +2,6 @@ project:
   name: veritas
   namespace: https://github.com/daddydrac/veritas/ontology#
   description: Math-heavy evidence-backed research and development software-engineering agent.
-
 services:
   opensearch:
     url_env: VERITAS_OPENSEARCH_URL
@@ -44,10 +43,48 @@ services:
     provider: opensearch-faiss-hnsw
     collection: veritas-research-chunks
   model:
-    provider_env: VERITAS_MODEL_PROVIDER
-    model_name_env: VERITAS_MODEL_NAME
-    embedding_model_env: VERITAS_EMBEDDING_MODEL
-
+    provider: vllm
+    protocol: openai-compatible
+    require_models_env: VERITAS_REQUIRE_MODELS
+    planner:
+      role: planner
+      url_env: VERITAS_PLANNER_VLLM_URL
+      default_url: http://vllm-planner:8000
+      model_env: VERITAS_PLANNER_MODEL
+      served_model_name_env: VERITAS_PLANNER_SERVED_MODEL_NAME
+      default_model: Qwen/Qwen2.5-Coder-7B-Instruct
+      default_served_model_name: veritas-planner
+      temperature: 0.1
+      max_tokens: 1800
+    code:
+      role: code_generation
+      url_env: VERITAS_CODE_VLLM_URL
+      default_url: http://vllm-code:8000
+      model_env: VERITAS_CODE_MODEL
+      served_model_name_env: VERITAS_CODE_SERVED_MODEL_NAME
+      default_model: Qwen/Qwen2.5-Coder-14B-Instruct
+      fallback_model_env: VERITAS_CODE_FALLBACK_MODEL
+      fallback_model: deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+      default_served_model_name: veritas-code
+      temperature: 0.05
+      max_tokens: 4096
+    math:
+      role: math_reasoning
+      url_env: VERITAS_MATH_VLLM_URL
+      default_url: http://vllm-math:8000
+      model_env: VERITAS_MATH_MODEL
+      served_model_name_env: VERITAS_MATH_SERVED_MODEL_NAME
+      default_model: allenai/Olmo-3-7B-Instruct
+      large_model_env: VERITAS_MATH_LARGE_MODEL
+      large_model: allenai/Olmo-3.1-32B-Instruct
+      default_served_model_name: veritas-math
+      temperature: 0.1
+      max_tokens: 4096
+    remote:
+      enabled_env: VERITAS_REMOTE_MODEL_ENABLED
+      base_url_env: VERITAS_REMOTE_MODEL_BASE_URL
+      api_key_env: VERITAS_REMOTE_MODEL_API_KEY
+      model_env: VERITAS_REMOTE_MODEL_NAME
 retrieval:
   default_mode: hybrid
   lexical_weight: 0.45
@@ -57,11 +94,10 @@ retrieval:
   minimum_embedding_norm: 0.999
   maximum_embedding_norm: 1.001
   lexical_fields:
-    - text^3
-    - title^4
-    - formulas.latex^5
-    - metadata.summary^2
-
+  - text^3
+  - title^4
+  - formulas.latex^5
+  - metadata.summary^2
 ingestion:
   arxiv:
     api_url: https://export.arxiv.org/api/query
@@ -82,16 +118,15 @@ ingestion:
     hard_max_chars: 2800
     keep_formulas_with_context: true
     formula_markers:
-      - "$$"
-      - "\\["
-      - "\\begin{equation}"
-      - "\\begin{align}"
-      - "\\begin{gather}"
+    - $$
+    - \[
+    - \begin{equation}
+    - \begin{align}
+    - \begin{gather}
   outputs:
     raw_pdf_dir: /workspace/data/papers
     docling_dir: /workspace/data/docling
     chunks_dir: /workspace/data/chunks
-
 ontology:
   file: /workspace/ontology/veritas.owl
   graph_uri: https://github.com/daddydrac/veritas/graph/research
@@ -102,10 +137,15 @@ ontology:
     rdfs: http://www.w3.org/2000/01/rdf-schema#
     owl: http://www.w3.org/2002/07/owl#
     xsd: http://www.w3.org/2001/XMLSchema#
-
 codegen:
   default_language: rust
-  allowed_languages: [rust, python, cuda, cpp, julia, typescript]
+  allowed_languages:
+  - rust
+  - python
+  - cuda
+  - cpp
+  - julia
+  - typescript
   package_outputs_dir: /workspace/data/generated
   require_tests: true
   require_readme: true
@@ -114,15 +154,34 @@ codegen:
   gpu:
     enabled: true
     strategy: dynamic
-    supported_backends: [cuda, candle, burn, tch, wgpu, cpu]
-
+    supported_backends:
+    - cuda
+    - candle
+    - burn
+    - tch
+    - wgpu
+    - cpu
 cli:
   logo: veritas
   tagline: Math heavy evidence backed research and development software engineering agent.
   first_run_prompts: true
-
 validation:
   require_evidence: true
   require_acceptance_criteria: true
   require_control_flow_backcheck: true
   require_risk_register: true
+models:
+  serving_solution: vllm
+  image_env: VERITAS_VLLM_IMAGE
+  default_image: vllm/vllm-openai:latest
+  planner_default: Qwen/Qwen2.5-Coder-7B-Instruct
+  code_defaults:
+  - Qwen/Qwen2.5-Coder-7B-Instruct
+  - Qwen/Qwen2.5-Coder-14B-Instruct
+  - deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+  math_defaults:
+  - allenai/Olmo-3-7B-Instruct
+  - allenai/Olmo-3.1-32B-Instruct
+  embedding_default: Muennighoff/SBERT-base-nli-v2
+  hf_cache_volume: hf-cache
+  note: Rust API and CLI call vLLM OpenAI-compatible endpoints; vLLM downloads models from Hugging Face into the shared cache volume.

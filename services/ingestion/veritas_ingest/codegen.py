@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from .errors import VeritasFailure
 from .planning import PlanningEvidence, build_evidence_backed_plan
 
@@ -46,6 +48,130 @@ def _markdown_list(items: list[Any]) -> str:
     return "".join(f"- {str(item)}\n" for item in items)
 
 
+
+def _model_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+    return cfg.get("services", {}).get("model", {}).get("code", {})
+
+
+def _vllm_url(cfg: dict[str, Any]) -> str:
+    model_cfg = _model_cfg(cfg)
+    env_name = model_cfg.get("url_env", "VERITAS_CODE_VLLM_URL")
+    return os.getenv(env_name, model_cfg.get("default_url", "http://vllm-code:8000"))
+
+
+def _vllm_served_model_name(cfg: dict[str, Any]) -> str:
+    model_cfg = _model_cfg(cfg)
+    env_name = model_cfg.get("served_model_name_env", "VERITAS_CODE_SERVED_MODEL_NAME")
+    return os.getenv(env_name, model_cfg.get("default_served_model_name", "veritas-code"))
+
+
+def _vllm_hf_model_id(cfg: dict[str, Any]) -> str:
+    model_cfg = _model_cfg(cfg)
+    env_name = model_cfg.get("model_env", "VERITAS_CODE_MODEL")
+    return os.getenv(env_name, model_cfg.get("default_model", "Qwen/Qwen2.5-Coder-14B-Instruct"))
+
+
+def _call_codegen_model(prompt: str, language: str, plan: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any]:
+    """Call the configured vLLM code model and return generated text.
+
+    Acceptance criteria:
+        1. Use vLLM's OpenAI-compatible chat completions endpoint.
+        2. Include evidence, formulas, risks, and validation gates in the prompt.
+        3. Return structured warning data instead of failing package generation.
+    """
+
+    url = _vllm_url(cfg).rstrip("/") + "/v1/chat/completions"
+    served_model = _vllm_served_model_name(cfg)
+    hf_model = _vllm_hf_model_id(cfg)
+    model_cfg = _model_cfg(cfg)
+    system = (
+        "You are Veritas Code Writer. Generate maintainable, testable, review-gated "
+        "production code from evidence-backed math research. Do not claim proof or "
+        "production certification unless validation gates pass. Return concise file-oriented output."
+    )
+    user = json.dumps(
+        {
+            "language": language,
+            "user_prompt": prompt,
+            "requirements": [
+                "cite evidence chunks and formulas",
+                "state assumptions and invariants",
+                "include tests and failure modes",
+                "design CPU first with GPU extension points when relevant",
+                "keep implementation maintainable for open-source contributors",
+            ],
+            "plan": plan,
+        },
+        ensure_ascii=False,
+    )
+    payload = {
+        "model": served_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": float(model_cfg.get("temperature", 0.05)),
+        "max_tokens": int(model_cfg.get("max_tokens", 4096)),
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=900)
+    except requests.RequestException as exc:
+        return {
+            "ok": False,
+            "stage": "codegen.vllm_transport",
+            "message": f"Code model request failed before response: {exc}",
+            "remediation": "Start the code model with `docker compose --profile code-model up -d vllm-code`, or switch to a reachable vLLM endpoint.",
+            "model": hf_model,
+            "served_model": served_model,
+            "url": url,
+        }
+    if response.status_code >= 400:
+        return {
+            "ok": False,
+            "stage": "codegen.vllm_upstream",
+            "message": f"Code model returned HTTP {response.status_code}: {response.text[:1200]}",
+            "remediation": "Check Hugging Face model ID, HF_TOKEN, GPU memory, and `docker compose logs vllm-code`.",
+            "model": hf_model,
+            "served_model": served_model,
+            "url": url,
+        }
+    try:
+        payload = response.json()
+    except ValueError:
+        return {
+            "ok": False,
+            "stage": "codegen.vllm_parse",
+            "message": "Code model returned non-JSON output from the OpenAI-compatible endpoint.",
+            "remediation": "Verify the vLLM endpoint is /v1/chat/completions and not a raw text endpoint.",
+            "raw": response.text[:2000],
+            "model": hf_model,
+        }
+    content = (
+        payload.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+    if not content.strip():
+        return {
+            "ok": False,
+            "stage": "codegen.vllm_empty",
+            "message": "Code model returned no content.",
+            "remediation": "Retry with a more specific prompt or inspect vLLM logs.",
+            "model": hf_model,
+            "served_model": served_model,
+            "response": payload,
+        }
+    return {
+        "ok": True,
+        "stage": "codegen.vllm_success",
+        "model": hf_model,
+        "served_model": served_model,
+        "url": url,
+        "content": content,
+        "raw_response": payload,
+    }
+
+
 def _evidence_summary(plan: dict[str, Any]) -> str:
     evidence = plan.get("evidence", {})
     hits = evidence.get("opensearch_hits", [])[:8]
@@ -72,6 +198,7 @@ def generate_package(prompt: str, language: str, cfg: dict[str, Any]) -> dict[st
     """
 
     plan = build_evidence_backed_plan(prompt, cfg, size=int(cfg.get("retrieval", {}).get("top_k", 8)))
+    model_output = _call_codegen_model(prompt, language, plan, cfg)
     digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:10]
     package_name = f"veritas_{_safe_name(prompt)}_{digest}".replace("-", "_")
     output_dir = _output_root(cfg) / package_name
@@ -81,6 +208,14 @@ def generate_package(prompt: str, language: str, cfg: dict[str, Any]) -> dict[st
         target = output_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
+
+    if model_output.get("ok"):
+        (output_dir / "MODEL_OUTPUT.md").write_text(model_output.get("content", ""), encoding="utf-8")
+    else:
+        (output_dir / "MODEL_OUTPUT_ERROR.json").write_text(
+            json.dumps(model_output, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
     analysis = plan.get("analysis", {})
     readme = f"""# {package_name}\n\nGenerated by **Veritas** from evidence-backed mathematical research context.\n\n## Prompt\n\n```text\n{prompt}\n```\n\n## Status\n\nThis package is a **review-gated production scaffold**. It contains source, tests,\nand validation artifacts, but it is not theorem-certified until the validation\ngates in `VALIDATION_REPORT.md` pass.\n\n## Representation-first analysis\n\n- Surface phenomenon: {analysis.get('surface_phenomenon', {}).get('apparent_complexity', [])}\n- Candidate representation map: {analysis.get('representation_hypothesis', {}).get('candidate_map')}\n- Candidate invariants:\n{_markdown_list(analysis.get('candidate_invariants', []))}\n## Build / test\n\nSee language-specific package files.\n"""
@@ -96,6 +231,7 @@ def generate_package(prompt: str, language: str, cfg: dict[str, Any]) -> dict[st
         "path": str(output_dir),
         "status": "generated_scaffold_requires_review",
         "plan": plan,
+        "code_model_output": model_output,
     }
     (output_dir / "veritas_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False),

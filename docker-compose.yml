@@ -10,15 +10,43 @@ x-veritas-env: &veritas-env
   VERITAS_FUSEKI_GRAPH_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/data
   VERITAS_FUSEKI_PING_URL: http://fuseki:3030/$$/ping
   VERITAS_QDRANT_URL: http://qdrant:6333
-  VERITAS_MODEL_PROVIDER: ${VERITAS_MODEL_PROVIDER:-ollama}
-  VERITAS_MODEL_NAME: ${VERITAS_MODEL_NAME:-qwen2.5-coder:7b}
+  VERITAS_MODEL_PROVIDER: ${VERITAS_MODEL_PROVIDER:-vllm}
+  VERITAS_MODEL_SERVING_PROVIDER: ${VERITAS_MODEL_SERVING_PROVIDER:-vllm}
+  VERITAS_PLANNER_MODEL: ${VERITAS_PLANNER_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+  VERITAS_CODE_MODEL: ${VERITAS_CODE_MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct}
+  VERITAS_CODE_FALLBACK_MODEL: ${VERITAS_CODE_FALLBACK_MODEL:-deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct}
+  VERITAS_MATH_MODEL: ${VERITAS_MATH_MODEL:-allenai/Olmo-3-7B-Instruct}
+  VERITAS_MATH_LARGE_MODEL: ${VERITAS_MATH_LARGE_MODEL:-allenai/Olmo-3.1-32B-Instruct}
   VERITAS_EMBEDDING_MODEL: ${VERITAS_EMBEDDING_MODEL:-Muennighoff/SBERT-base-nli-v2}
   VERITAS_EMBEDDING_URL: http://embedding:8090
   VERITAS_OPENSEARCH_VECTOR_FIELD: ${VERITAS_OPENSEARCH_VECTOR_FIELD:-embedding}
+  VERITAS_PLANNER_VLLM_URL: ${VERITAS_PLANNER_VLLM_URL:-http://vllm-planner:8000}
+  VERITAS_CODE_VLLM_URL: ${VERITAS_CODE_VLLM_URL:-http://vllm-code:8000}
+  VERITAS_MATH_VLLM_URL: ${VERITAS_MATH_VLLM_URL:-http://vllm-math:8000}
+  VERITAS_REQUIRE_MODELS: ${VERITAS_REQUIRE_MODELS:-false}
+
+x-vllm-env: &vllm-env
+  HF_HOME: /models/huggingface
+  TRANSFORMERS_CACHE: /models/huggingface
+  HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+  HF_TOKEN: ${HF_TOKEN:-}
+  VLLM_ENABLE_CUDA_COMPATIBILITY: ${VERITAS_VLLM_ENABLE_CUDA_COMPATIBILITY:-1}
+
+x-vllm-common: &vllm-common
+  image: ${VERITAS_VLLM_IMAGE:-vllm/vllm-openai:latest}
+  ipc: host
+  environment:
+    <<: *vllm-env
+  volumes:
+    - hf-cache:/models/huggingface
+  gpus:
+    - device_ids: ["${VERITAS_GPU_DEVICE_ID:-0}"]
+      capabilities: ["gpu"]
+  restart: unless-stopped
 
 services:
   opensearch:
-    image: opensearchproject/opensearch:2.19.5
+    image: opensearchproject/opensearch:${VERITAS_OPENSEARCH_VERSION:-3.7.0}
     environment:
       discovery.type: single-node
       DISABLE_SECURITY_PLUGIN: "true"
@@ -36,7 +64,7 @@ services:
       retries: 30
 
   dashboards:
-    image: opensearchproject/opensearch-dashboards:2.19.5
+    image: opensearchproject/opensearch-dashboards:${VERITAS_OPENSEARCH_VERSION:-3.7.0}
     environment:
       OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
       DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
@@ -47,7 +75,7 @@ services:
         condition: service_healthy
 
   fuseki:
-    image: stain/jena-fuseki:5.2.0
+    image: ${VERITAS_FUSEKI_IMAGE:-stain/jena-fuseki:5.5.0}
     environment:
       ADMIN_PASSWORD: ${VERITAS_FUSEKI_ADMIN_PASSWORD:-admin}
       FUSEKI_DATASET_1: ${VERITAS_FUSEKI_DATASET:-veritas}
@@ -63,7 +91,7 @@ services:
       retries: 30
 
   qdrant:
-    image: qdrant/qdrant:v1.12.4
+    image: qdrant/qdrant:${VERITAS_QDRANT_VERSION:-v1.17.0}
     ports:
       - "${VERITAS_QDRANT_PORT:-6333}:6333"
     volumes:
@@ -158,20 +186,53 @@ services:
       - ./data/ontology:/workspace/output
     profiles: ["tools"]
 
-  ollama:
-    image: ollama/ollama:0.5.7
+  vllm-planner:
+    <<: *vllm-common
+    command: >
+      --model ${VERITAS_PLANNER_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
+      --served-model-name ${VERITAS_PLANNER_SERVED_MODEL_NAME:-veritas-planner}
+      --host 0.0.0.0
+      --port 8000
+      --dtype ${VERITAS_VLLM_DTYPE:-auto}
+      --max-model-len ${VERITAS_PLANNER_MAX_MODEL_LEN:-32768}
+      --gpu-memory-utilization ${VERITAS_PLANNER_GPU_MEMORY_UTILIZATION:-0.30}
+      --trust-remote-code
     ports:
-      - "${VERITAS_OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    gpus:
-      - device_ids: ["${VERITAS_GPU_DEVICE_ID:-0}"]
-        capabilities: ["gpu"]
-    profiles: ["gpu"]
+      - "${VERITAS_PLANNER_VLLM_PORT:-8001}:8000"
+    profiles: ["models"]
+
+  vllm-code:
+    <<: *vllm-common
+    command: >
+      --model ${VERITAS_CODE_MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct}
+      --served-model-name ${VERITAS_CODE_SERVED_MODEL_NAME:-veritas-code}
+      --host 0.0.0.0
+      --port 8000
+      --dtype ${VERITAS_VLLM_DTYPE:-auto}
+      --max-model-len ${VERITAS_CODE_MAX_MODEL_LEN:-32768}
+      --gpu-memory-utilization ${VERITAS_CODE_GPU_MEMORY_UTILIZATION:-0.60}
+      --trust-remote-code
+    ports:
+      - "${VERITAS_CODE_VLLM_PORT:-8002}:8000"
+    profiles: ["code-model"]
+
+  vllm-math:
+    <<: *vllm-common
+    command: >
+      --model ${VERITAS_MATH_MODEL:-allenai/Olmo-3-7B-Instruct}
+      --served-model-name ${VERITAS_MATH_SERVED_MODEL_NAME:-veritas-math}
+      --host 0.0.0.0
+      --port 8000
+      --dtype ${VERITAS_VLLM_DTYPE:-auto}
+      --max-model-len ${VERITAS_MATH_MAX_MODEL_LEN:-32768}
+      --gpu-memory-utilization ${VERITAS_MATH_GPU_MEMORY_UTILIZATION:-0.30}
+      --trust-remote-code
+    ports:
+      - "${VERITAS_MATH_VLLM_PORT:-8003}:8000"
+    profiles: ["math-model"]
 
 volumes:
   opensearch-data:
   fuseki-data:
   qdrant-data:
-  ollama-data:
   hf-cache:

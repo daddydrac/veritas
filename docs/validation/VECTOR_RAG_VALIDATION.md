@@ -6,7 +6,7 @@ Veritas must index research-paper chunks into OpenSearch using approximate vecto
 
 ## Implemented design
 
-- OpenSearch image is pinned to `opensearchproject/opensearch:2.19.5` because FAISS `cosinesimil` support is documented for OpenSearch 2.19 and later.
+- OpenSearch image is configured through `VERITAS_OPENSEARCH_VERSION` and defaults to `opensearchproject/opensearch:3.7.0`. The vector index still uses FAISS/HNSW with `space_type: cosinesimil`; Veritas normalizes SBERT vectors before indexing and querying.
 - The OpenSearch index mapping creates a `knn_vector` field named `embedding`.
 - The vector mapping uses:
   - `engine: faiss`

@@ -14,7 +14,7 @@ This scaffold is runnable as an infrastructure foundation, but it is not yet the
 
 - `/plan` is a deterministic envelope, not a real model-router/agent planner.
 - No actual math-to-code generator is implemented yet.
-- No multi-GPU code distribution layer is implemented yet; only an optional Ollama GPU service exists.
+- No multi-GPU code distribution layer is implemented yet; vLLM model services now exist behind Docker Compose profiles, but GPU runtime validation still requires a real host.
 - No vector index service is wired despite architecture references to FAISS/Qdrant/HNSW.
 - No property graph service is wired despite architecture references.
 - No SHACL engine is wired yet.

@@ -1,7 +1,7 @@
 # Veritas Quickstart
 
-This guide starts Veritas with Docker Compose, uploads the ontology, ingests
-research PDFs, and begins prompting the system.
+This guide starts Veritas with Docker Compose, configures vLLM model routing,
+uploads the OWL ontology, ingests research PDFs, and begins prompting the system.
 
 ## 1. Prerequisites
 
@@ -12,33 +12,45 @@ Install:
 - `curl`
 - `jq` recommended
 
-For GPU-backed local LLM profiles, install NVIDIA Container Toolkit and verify:
+For local vLLM model serving, install NVIDIA Container Toolkit and verify GPU
+access:
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu22.04 nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
-## 2. Configure
+You can run ingestion/search without local vLLM models, but planning and code
+writing are much more useful when a vLLM role is running.
+
+## 2. Configure Veritas
+
+Create defaults:
 
 ```bash
 cp .env.example .env
 ```
 
-Most knobs are dynamic:
+Interactive setup:
 
-```text
-.env                    service ports, model names, GPU id
-config/veritas.yaml     chunking, ontology graph URIs, vector settings, codegen
-packages/ontology/      OWL ontology and SPARQL queries
+```bash
+docker compose run --rm cli init
 ```
 
-Default embedding model:
+The wizard asks for:
 
 ```text
-Muennighoff/SBERT-base-nli-v2
+Planner model        default Qwen/Qwen2.5-Coder-7B-Instruct
+Code model           default Qwen/Qwen2.5-Coder-14B-Instruct
+Code fallback        default deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
+Math model           default allenai/Olmo-3-7B-Instruct or 32B option
+Embedding model      default Muennighoff/SBERT-base-nli-v2
+Hugging Face token   optional
+GPU id               default 0
 ```
 
-## 3. Start the full stack
+You can paste any Hugging Face model ID supported by vLLM.
+
+## 3. Start core services
 
 ```bash
 ./scripts/bootstrap.sh
@@ -63,32 +75,61 @@ Check readiness:
 curl -s http://localhost:8080/ready | jq
 ```
 
-## 4. Open the guided CLI startup screen
+## 4. Start vLLM model serving
+
+Planner only:
+
+```bash
+docker compose --profile models up -d vllm-planner
+```
+
+Code writer:
+
+```bash
+docker compose --profile code-model up -d vllm-code
+```
+
+Math reasoner:
+
+```bash
+docker compose --profile math-model up -d vllm-math
+```
+
+All local model roles:
+
+```bash
+docker compose --profile models --profile code-model --profile math-model up -d
+```
+
+Show model routing:
+
+```bash
+docker compose run --rm cli models
+```
+
+## 5. Open the guided CLI startup screen
 
 ```bash
 docker compose run --rm cli welcome
 ```
 
-The startup screen prints the Veritas ASCII logo, tagline, service readiness, knowledge-graph status, workflow menu, and mode guidance. This is the intended non-coder entry point. It shows whether OpenSearch FAISS/HNSW, Fuseki, Openllet, ontology upload, embeddings, and retrieval are ready before the user starts asking for code.
+The startup screen prints the Veritas ASCII logo, tagline, service readiness,
+knowledge-graph status, model routing, workflow menu, and mode guidance. This is
+the intended non-coder entry point.
 
-## 5. Start with Docker Compose only
-
-Equivalent manual commands:
-
-```bash
-docker compose up -d --build opensearch fuseki qdrant embedding api
-
-docker compose run --rm ingestion \
-  python -m veritas_ingest.cli upload-ontology
-```
-
-CLI container:
+## 6. Upload or refresh the ontology
 
 ```bash
-docker compose run --rm cli welcome
+docker compose run --rm cli upload-ontology
 ```
 
-## 6. Ingest arXiv PDFs
+Upload a custom OWL/RDF/Turtle file:
+
+```bash
+docker compose run --rm cli upload-ontology --path ./my-ontology.owl
+```
+
+## 7. Ingest arXiv PDFs
 
 ```bash
 docker compose run --rm cli ingest-arxiv \
@@ -96,7 +137,7 @@ docker compose run --rm cli ingest-arxiv \
   --max-results 3
 ```
 
-What happens:
+Pipeline:
 
 ```text
 arXiv search
@@ -109,7 +150,7 @@ arXiv search
 → Jena/Fuseki RDF graph upload
 ```
 
-## 7. Upload a local PDF
+## 8. Upload a local PDF
 
 ```bash
 docker compose run --rm cli ingest-pdf --path ./paper.pdf
@@ -118,24 +159,24 @@ docker compose run --rm cli ingest-pdf --path ./paper.pdf
 The CLI stages the PDF into `data/papers/uploads/` and runs ingestion inside the
 Docker network.
 
-## 8. Search evidence
+## 9. Search evidence
 
-Semantic vector search:
-
-```bash
-docker compose run --rm cli search "representation learning invariant structure" --size 5
-```
-
-Lexical/formula search through API:
+Hybrid vector + lexical + formula search:
 
 ```bash
-curl -s http://localhost:8080/search \
-  -H 'content-type: application/json' \
-  -d '{"query":"E = mc^2", "mode":"lexical", "size":5}' \
-  | jq
+docker compose run --rm cli search \
+  "representation learning invariant structure" \
+  --mode hybrid \
+  --size 5
 ```
 
-## 9. Query the ontology graph
+Lexical/formula search:
+
+```bash
+docker compose run --rm cli search "E = mc^2" --mode lexical --size 5
+```
+
+## 10. Query the ontology graph
 
 Formula traceability:
 
@@ -152,7 +193,7 @@ LIMIT 20
 '
 ```
 
-## 10. Ask Veritas to plan from research evidence
+## 11. Ask Veritas to plan from research evidence
 
 ```bash
 docker compose run --rm cli ask \
@@ -160,9 +201,9 @@ docker compose run --rm cli ask \
 ```
 
 The planner retrieves OpenSearch evidence, queries Fuseki/Jena for formula
-traceability, and emits an evidence-backed plan with risks and validation gates.
+traceability, and calls the configured planner vLLM model when available.
 
-## 11. Generate a review-gated code package
+## 12. Generate a review-gated code package
 
 ```bash
 docker compose run --rm cli generate-code \
@@ -182,40 +223,47 @@ Each package includes:
 README.md
 VALIDATION_REPORT.md
 EVIDENCE.md
+MODEL_OUTPUT.md or MODEL_OUTPUT_ERROR.json
 veritas_manifest.json
 source files
 tests
 ```
 
-## 12. Stop Veritas
+## 13. Direct model call
+
+```bash
+docker compose run --rm cli chat \
+  --role planner \
+  "Summarize the current evidence-backed implementation plan."
+```
+
+Roles:
+
+```text
+planner
+code
+math
+```
+
+## 14. Useful logs
+
+```bash
+docker compose logs -f api
+docker compose logs -f embedding
+docker compose logs -f ingestion
+docker compose logs -f vllm-planner
+docker compose logs -f opensearch
+docker compose logs -f fuseki
+```
+
+## 15. Stop
 
 ```bash
 docker compose down
 ```
 
-Destroy volumes if you want a clean reset:
+Remove data volumes:
 
 ```bash
 docker compose down -v
 ```
-
-## Troubleshooting
-
-Check all services:
-
-```bash
-docker compose ps
-curl -s http://localhost:8080/ready | jq
-```
-
-Logs:
-
-```bash
-docker compose logs --tail=200 opensearch
-docker compose logs --tail=200 fuseki
-docker compose logs --tail=200 embedding
-docker compose logs --tail=200 api
-```
-
-Common issue: embedding model download is slow on first boot. Wait for the
-embedding service to become healthy, then retry ingestion.

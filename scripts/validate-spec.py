@@ -36,6 +36,8 @@ REQUIRED_FILES = [
     "docs/architecture/END_TO_END_WORKFLOW.md",
     "README.md",
     "QUICKSTART.md",
+    "docs/MODELS.md",
+    "MODEL_SERVING_UPDATE.md",
     "services/ingestion/veritas_ingest/planning.py",
     "services/ingestion/veritas_ingest/codegen.py",
     "services/ingestion/veritas_ingest/ontology.py",
