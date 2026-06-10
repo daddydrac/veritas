@@ -2,7 +2,7 @@
 
 **Math-heavy evidence-backed research and development software engineering agent.**
 
-Veritas is an open-source, Docker-first agentic system for turning math-heavy
+Veritas is an open-source (see LICENSE.md for limits), Docker-first agentic system for turning math-heavy
 research into auditable engineering plans, searchable evidence, ontology-grounded
 analysis, and validated distributable code packages. It combines PDF ingestion,
 formula extraction, OpenSearch FAISS/HNSW vector RAG, Jena/Fuseki ontology graphs,
