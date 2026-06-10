@@ -35,6 +35,66 @@ Veritas preserves that chain. It maps papers, chunks, formulas, evidence, risks,
 assumptions, and generated artifacts into a semantic graph so agents can query and
 ground their planning before producing code.
 
+[OWL-DL Compliant Ontology](https://github.com/daddydrac/veritas/blob/main/packages/ontology/veritas.owl)
+
+The Veritas ontology is the semantic operating model for the project. It defines how Veritas represents mathematical research, evidence, planning, risk, software engineering, validation, and operations as one connected OWL-DL knowledge graph rather than disconnected text chunks or prompts. The ontology describes itself as a BFO/CCO-aligned OWL-DL application ontology for “expert mathematical research, software architecture, software engineering, DevOps/SRE operations, risk, evidence, simplicity pressure, and control-flow correctness.”
+
+Veritas reason through this chain:
+
+Objective
+→ Evidence
+→ SymbolicShadow
+→ Invariant
+→ Risk
+→ Plan
+→ Task
+→ SourceCodeArtifact
+→ ValidationCheck
+→ BuildArtifact
+
+That means Veritas can ask questions like: Which formula came from which paper? Which invariant must the code preserve? Which plan has unmitigated risk? Which generated artifact lacks validation? Which deployment unit lacks observability?
+
+The ontology is organized into modules:
+
+- core
+- planning
+- mathematical-research
+- software-engineering
+- risk
+- evidence-validation
+- mathematical symbolism
+- control-flow-correctness
+- devops-sre
+- simplicity-design-quality
+- retrieval-memory
+
+Its most important function is to treat formulas as SymbolicShadows: equations, theorem statements, diagrams, or algorithms that record deeper generative structure, not final truth by themselves. It then connects those symbolic shadows to representation maps, latent structures, invariants, transformation families, proof status, transfer tests, and evidence.
+
+It also models engineering execution. For example, SourceCodeArtifact builds into BuildArtifact; code can be testedBy a TestSpecification; artifacts or plans can be validatedBy a ValidationCheckSpecification; risks can be mitigatedBy mitigation specifications; and runtime systems can emit observable signals, have runbooks, SLOs, metrics, logs, and traces.
+
+The ontology includes useful OWL-DL inferred classes, such as:
+
+ExecutablePlan =
+  EngineeringPlan
+  + at least one AcceptanceCriterion
+  + at least one ValidationCheckSpecification
+
+MitigatedRisk =
+  Risk
+  + at least one MitigationSpecification
+
+WellGroundedInvariant =
+  Invariant
+  + at least one TransformationFamily
+
+WellFormedLoopSpecification =
+  LoopSpecification
+  + at least one TerminationCondition
+
+These definitions let a reasoner classify project facts automatically instead of relying only on an LLM’s judgment.
+
+The ontology gives Veritas memory with meaning. OpenSearch can retrieve text, and AI models can generate code, but the ontology tells Veritas what the retrieved text and generated code mean in the research-to-production workflow. It is the layer that turns RAG into evidence-backed, constraint-aware, validation-gated reasoning.
+
 ## End-user workflow
 
 The intended non-coder workflow is:
