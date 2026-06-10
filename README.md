@@ -353,3 +353,39 @@ Veritas is expected to fail loudly and usefully. Failures should include:
 This implementation supports ingestion, OpenSearch FAISS/HNSW indexing, RDF graph mapping, SPARQL grounding, vLLM model routing, structured planning, and an autonomous `/run` loop that creates a workspace, writes code files, runs compile/test commands, feeds failures back to the code model, retries with bounded attempts, and marks generated packages as `production_candidate_validated` only when validation commands pass.
 
 Live Docker/GPU/vLLM validation still must be run on the target host because this development environment does not provide Docker, Cargo, or GPU access.
+
+---
+
+# System reqs
+
+### Practical recommended machine
+```
+CPU:        16+ cores
+RAM:        128 GB
+GPU:        1× RTX 4090 24 GB or better
+Storage:    2 TB NVMe SSD
+OS:         Linux strongly preferred
+Docker:     Docker Compose + NVIDIA Container Toolkit
+CUDA:       CUDA-compatible NVIDIA driver
+```
+
+### That should comfortably run:
+
+```
+OpenSearch FAISS/HNSW
+Jena Fuseki
+Openllet
+Docling ingestion
+SBERT embeddings
+vLLM planner model
+vLLM code model, one at a time
+```
+
+### Better multi-GPU setup
+
+```
+CPU:        24–32 cores
+RAM:        256 GB
+GPU:        2× RTX 4090 24 GB, RTX 6000 Ada 48 GB, A6000 48 GB, A100, or H100
+Storage:    4 TB NVMe
+```
