@@ -1,11 +1,14 @@
-FROM rust:1.96-bookworm AS builder
+FROM rust:bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock* ./
 COPY apps ./apps
 RUN cargo build --release -p veritas-api
 
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM rust:bookworm
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates bash python3 python3-venv python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
 COPY --from=builder /app/target/release/veritas-api /usr/local/bin/veritas-api
 EXPOSE 8080
 CMD ["veritas-api"]

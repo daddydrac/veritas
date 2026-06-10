@@ -62,7 +62,6 @@ This starts:
 OpenSearch
 OpenSearch Dashboards
 Jena Fuseki
-Qdrant placeholder service
 SBERT embedding service
 Veritas API
 ```
@@ -203,30 +202,35 @@ docker compose run --rm cli ask \
 The planner retrieves OpenSearch evidence, queries Fuseki/Jena for formula
 traceability, and calls the configured planner vLLM model when available.
 
-## 12. Generate a review-gated code package
+## 12. Run autonomous code generation and validation
 
 ```bash
+docker compose run --rm cli run \
+  "Implement the strongest indexed method as a tested package with CPU-safe implementation and GPU extension points." \
+  --language rust
+
+# alias that calls the same /run endpoint
 docker compose run --rm cli generate-code \
   --language rust \
-  --prompt "Implement the strongest indexed method as a tested package with CPU/GPU extension points."
+  --prompt "Implement the strongest indexed method as a tested package with CPU-safe implementation and GPU extension points."
 ```
 
-Generated packages land in:
+The autonomous run creates a workspace under:
 
 ```text
-data/generated/
+data/runs/run-*/
 ```
 
-Each package includes:
+The run report includes the files changed, commands run, validation results, retry history, and final status. The generated package status changes to `production_candidate_validated` only when compile/test commands pass. Each workspace includes:
 
 ```text
 README.md
 VALIDATION_REPORT.md
 EVIDENCE.md
-MODEL_OUTPUT.md or MODEL_OUTPUT_ERROR.json
-veritas_manifest.json
+final_report.json
 source files
 tests
+build/test outputs
 ```
 
 ## 13. Direct model call

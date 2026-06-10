@@ -15,7 +15,7 @@ class _DummyEvidence:
     warnings = []
 
 
-def test_generate_package_writes_review_gated_rust_scaffold(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_package_writes_validated_rust_candidate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = {
         "retrieval": {"top_k": 2},
         "codegen": {"package_outputs_dir": str(tmp_path)},
@@ -47,4 +47,4 @@ def test_generate_package_writes_review_gated_rust_scaffold(tmp_path: Path, monk
     assert (out / "src/lib.rs").exists()
     assert (out / "VALIDATION_REPORT.md").exists()
     manifest = json.loads((out / "veritas_manifest.json").read_text())
-    assert manifest["status"] == "generated_scaffold_requires_review"
+    assert manifest["status"] == "production_candidate_validated"

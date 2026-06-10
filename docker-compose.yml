@@ -9,7 +9,6 @@ x-veritas-env: &veritas-env
   VERITAS_FUSEKI_UPDATE_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/update
   VERITAS_FUSEKI_GRAPH_URL: http://fuseki:3030/${VERITAS_FUSEKI_DATASET:-veritas}/data
   VERITAS_FUSEKI_PING_URL: http://fuseki:3030/$$/ping
-  VERITAS_QDRANT_URL: http://qdrant:6333
   VERITAS_MODEL_PROVIDER: ${VERITAS_MODEL_PROVIDER:-vllm}
   VERITAS_MODEL_SERVING_PROVIDER: ${VERITAS_MODEL_SERVING_PROVIDER:-vllm}
   VERITAS_PLANNER_MODEL: ${VERITAS_PLANNER_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
@@ -46,7 +45,7 @@ x-vllm-common: &vllm-common
 
 services:
   opensearch:
-    image: opensearchproject/opensearch:${VERITAS_OPENSEARCH_VERSION:-3.7.0}
+    image: opensearchproject/opensearch:${VERITAS_OPENSEARCH_VERSION:-2.19.5}
     environment:
       discovery.type: single-node
       DISABLE_SECURITY_PLUGIN: "true"
@@ -64,7 +63,7 @@ services:
       retries: 30
 
   dashboards:
-    image: opensearchproject/opensearch-dashboards:${VERITAS_OPENSEARCH_VERSION:-3.7.0}
+    image: opensearchproject/opensearch-dashboards:${VERITAS_OPENSEARCH_VERSION:-2.19.5}
     environment:
       OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
       DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
@@ -73,6 +72,11 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
 
   fuseki:
     image: ${VERITAS_FUSEKI_IMAGE:-stain/jena-fuseki:5.5.0}
@@ -90,12 +94,6 @@ services:
       timeout: 5s
       retries: 30
 
-  qdrant:
-    image: qdrant/qdrant:${VERITAS_QDRANT_VERSION:-v1.17.0}
-    ports:
-      - "${VERITAS_QDRANT_PORT:-6333}:6333"
-    volumes:
-      - qdrant-data:/qdrant/storage
 
   embedding:
     build:
@@ -131,15 +129,20 @@ services:
       VERITAS_API_PORT: ${VERITAS_API_PORT:-8080}
     ports:
       - "${VERITAS_API_PORT:-8080}:8080"
+    volumes:
+      - ./data:/workspace/data
     depends_on:
       opensearch:
         condition: service_healthy
       fuseki:
         condition: service_healthy
-      qdrant:
-        condition: service_started
       embedding:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3).read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   cli:
     build:
@@ -199,6 +202,11 @@ services:
       --trust-remote-code
     ports:
       - "${VERITAS_PLANNER_VLLM_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 120
     profiles: ["models"]
 
   vllm-code:
@@ -214,6 +222,11 @@ services:
       --trust-remote-code
     ports:
       - "${VERITAS_CODE_VLLM_PORT:-8002}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 120
     profiles: ["code-model"]
 
   vllm-math:
@@ -229,10 +242,14 @@ services:
       --trust-remote-code
     ports:
       - "${VERITAS_MATH_VLLM_PORT:-8003}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 120
     profiles: ["math-model"]
 
 volumes:
   opensearch-data:
   fuseki-data:
-  qdrant-data:
   hf-cache:

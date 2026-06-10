@@ -4,7 +4,7 @@
 
 Veritas is an open-source, Docker-first agentic system for turning math-heavy
 research into auditable engineering plans, searchable evidence, ontology-grounded
-analysis, and review-gated distributable code packages. It combines PDF ingestion,
+analysis, and validated distributable code packages. It combines PDF ingestion,
 formula extraction, OpenSearch FAISS/HNSW vector RAG, Jena/Fuseki ontology graphs,
 SPARQL grounding, vLLM model serving, and representation-first mathematical
 analysis.
@@ -48,10 +48,46 @@ The intended non-coder workflow is:
 11. Run SPARQL over the ontology graph to ground planning.
 12. Retrieve evidence before making claims.
 13. Perform representation-first math analysis.
-14. Turn research/math into review-gated production-code packages.
+14. Turn research/math into compile/test-validated production-code packages.
 15. Validate risks, assumptions, tests, control flow, and deployment constraints.
 16. Return either results or meaningful failure messages with remediation.
 ```
+
+
+## Ontology-guided reasoning concepts
+
+The ontology gives Veritas cross-domain constraints over concepts like:
+
+- **Objective** — Defines the desired outcome or goal. It keeps all plans, code, tests, and decisions aligned with what the system is actually trying to achieve.
+- **Plan** — Describes the path from objective to execution. It includes tasks, assumptions, risks, constraints, dependencies, and validation criteria.
+- **TaskSpecification** — A specific, actionable unit of work within a plan. It turns high-level intentions into executable tasks.
+- **Risk** — Identifies potential failures or threats to success. Tracking risks helps prevent hidden errors from propagating into code or deployments.
+- **Invariant** — A property that must remain true through transformations or implementations. It ensures generated code preserves the mathematical or engineering principles that make a method valid.
+- **EvidenceArtifact** — Any artifact that supports, refutes, or contextualizes a claim. This makes reasoning traceable and evidence-backed rather than relying solely on model outputs.
+- **ValidationCheckSpecification** — Defines how correctness will be tested or verified. It provides objective checks before accepting results or proceeding further.
+- **SymbolicShadow** — A formula, theorem, diagram, or algorithm representing deeper underlying structure. It reminds the system that symbolic expressions are evidence of deeper invariants, not the complete truth.
+- **SourceCodeArtifact** — The source code implementing mathematical or engineering decisions. It remains traceable back to objectives, formulas, risks, and validations.
+- **BuildArtifact** — A deployable output such as a binary, package, wheel, or container image. It represents the final runnable product derived from source code.
+
+**Reasoning Pipeline** — Instead of going directly from prompt to code, Veritas follows:
+
+```text
+Objective → Evidence → SymbolicShadow → Invariant → Risk → Plan → Tasks → Code → Validation → BuildArtifact
+```
+
+This creates stronger and more reliable reasoning.
+
+**Meaningful Memory** — The ontology gives retrieved information purpose and context. The system understands whether something is evidence, a risk, an invariant, or a task rather than just a text chunk.
+
+**Hallucination Prevention** — Formula-to-code generation must pass through assumptions, invariants, and validation. This reduces the chance of generating plausible but incorrect implementations.
+
+**Auditability** — Every code artifact can be traced back to its objective, evidence, invariant, risks, and validation checks. Users can inspect why a decision was made.
+
+**Graph-Based Reasoning** — Structured relationships allow powerful queries such as finding code without validation, formulas lacking invariants, or objectives blocked by unverified assumptions.
+
+**Research-to-Engineering Bridge** — The ontology unifies mathematical concepts such as proofs, invariants, and constraints with engineering concepts such as plans, tests, code, and deployment into one reasoning framework.
+
+**Core Advantage** — Veritas reasons about obligations and requirements, not just content. It can determine what must be proven, validated, or completed before research becomes production-grade software.
 
 ## Model serving
 
@@ -176,7 +212,7 @@ veritas >
 
 - **Docker Compose** for one-command local deployment.
 - **vLLM** for OpenAI-compatible local model serving.
-- **OpenSearch 3.7.0** with FAISS/HNSW `knn_vector` fields.
+- **OpenSearch 2.19.5** with FAISS/HNSW `knn_vector` fields.
 - **SentenceTransformers 5.5.1** using `Muennighoff/SBERT-base-nli-v2`.
 - **Normalized embeddings** for cosine similarity.
 - **Apache Jena Fuseki** for RDF/SPARQL graph storage.
@@ -184,7 +220,7 @@ veritas >
 - **Veritas OWL-DL ontology** for cross-domain reasoning constraints.
 - **Docling-first PDF parsing** with formula-preserving fallback extraction.
 - **Rust API and CLI** for service orchestration.
-- **Python ingestion workers** for document processing and package generation.
+- **Python ingestion workers** for document processing, formula extraction, and RDF/index writes.
 
 ## Repository layout
 
@@ -227,6 +263,7 @@ docker compose run --rm cli models
 docker compose run --rm cli ingest-arxiv --query "cat:cs.AI OR cat:math.OC" --max-results 3
 docker compose run --rm cli search "invariant representation" --mode hybrid
 docker compose run --rm cli ask "turn indexed research into tested Rust code"
+docker compose run --rm cli run "turn indexed research into tested Rust code" --language rust
 docker compose run --rm cli generate-code \
   --language rust \
   --prompt "implement the strongest indexed method as a tested package"
@@ -313,7 +350,6 @@ Veritas is expected to fail loudly and usefully. Failures should include:
 
 ## Current status
 
-This scaffold supports ingestion, indexing, RDF graph mapping, SPARQL grounding,
-vLLM model routing, evidence-backed planning drafts, and review-gated code package
-generation. It still requires live Docker/GPU validation on your machine before
-claiming production readiness for a specific deployment.
+This implementation supports ingestion, OpenSearch FAISS/HNSW indexing, RDF graph mapping, SPARQL grounding, vLLM model routing, structured planning, and an autonomous `/run` loop that creates a workspace, writes code files, runs compile/test commands, feeds failures back to the code model, retries with bounded attempts, and marks generated packages as `production_candidate_validated` only when validation commands pass.
+
+Live Docker/GPU/vLLM validation still must be run on the target host because this development environment does not provide Docker, Cargo, or GPU access.

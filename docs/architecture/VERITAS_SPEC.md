@@ -7,8 +7,8 @@ The system is validated against the architecture diagram with these planes:
 1. **Users & Stakeholders** — mathematical researcher, architect, software engineer, DevOps/SRE.
 2. **Specialist Agents** — ontology cartographer, representation cartographer, invariant miner, software engineering agent, DevOps/SRE agent, risk and validation agent, mathematical research agent.
 3. **Agent Orchestrator / Planner** — intent understanding, task planning, tool/model routing, context assembly, response synthesis.
-4. **Semantic Reasoning Plane** — Veritas OWL-DL ontology, BFO/CCO alignment, Jena/Fuseki triple store, SPARQL, OWL reasoning, SHACL/rule validation.
-5. **Retrieval & Memory Plane** — OpenSearch lexical retrieval, vector memory, property/dependency graph, document/code corpus, logs/traces/metrics.
+4. **Semantic Reasoning Plane** — Veritas OWL-DL ontology, BFO/CCO alignment, Jena/Fuseki triple store, SPARQL, and Openllet OWL reasoning.
+5. **Retrieval & Memory Plane** — OpenSearch lexical retrieval, FAISS/HNSW vector memory, document/code corpus, logs/traces/metrics.
 6. **Execution & Analysis Plane** — plan synthesis, control-flow back-check, risk assessment, proof/transfer check, simulation/analysis, action execution, Formula/LaTeX understanding, math-to-code synthesis, distributable code packaging.
 7. **Cross-Domain Shared Concepts** — objective, plan, task, capability, constraint, risk, invariant, evidence, validation, observable signal.
 8. **Outputs** — research notes, hypotheses, architecture decisions, implementation plans, runbooks, deployment plans, executable models, distributable packages, validated findings.
@@ -35,26 +35,26 @@ The target non-developer workflow is:
 
 ## Required task outcomes
 
-| Task | Required outcome | Current scaffold status |
+| Task | Required outcome | Current implementation status |
 |---|---|---|
-| Start stack | `veritas start` prints logo, creates `.env`, starts Docker Compose, and prints next steps. | Implemented in CLI scaffold. |
+| Start stack | `veritas start` prints logo, creates `.env`, starts Docker Compose, and prints next steps. | Implemented. |
 | Health feedback | `veritas ready` probes API dependencies and reports failed service and remediation. | Implemented for API, OpenSearch, Fuseki. |
-| arXiv ingestion | CLI loads PDFs from arXiv query into OpenSearch and Fuseki. | Implemented scaffold. |
-| Local PDF upload | CLI stages a local PDF into Docker volume and ingests it. | Implemented scaffold. |
-| PDF parsing | Docling-first conversion with pypdf fallback. | Implemented scaffold; formula accuracy must be corpus-validated. |
+| arXiv ingestion | CLI loads PDFs from arXiv query into OpenSearch and Fuseki. | Implemented. |
+| Local PDF upload | CLI stages a local PDF into Docker volume and ingests it. | Implemented. |
+| PDF parsing | Docling-first conversion with pypdf fallback. | Implemented; formula accuracy must be corpus-validated. |
 | Formula extraction | Preserve formula body, raw expression, offsets, context, source, pattern, and confidence. | Implemented heuristic extraction. |
 | Formula-safe chunking | Do not split formula spans across chunks; preserve context. | Implemented with smoke tests. |
 | OpenSearch indexing | Index text, metadata, formulas, and formula fields. | Implemented. |
 | Jena/Fuseki mapping | Upload source documents, chunks, and formulas as RDF. | Implemented. |
 | Cross-domain SPARQL | Query graph for evidence chunks and formula traceability. | Implemented sample queries. |
 | OWL-DL reasoning | Offline Openllet reasoner container. | Implemented command wrapper; not fully CI-proven in sandbox. |
-| Vector memory | Qdrant service available for future RAG embeddings. | Service added; embeddings not wired. |
-| Property graph | Dependency/execution graph. | Not implemented. |
-| SHACL governance | Closed-world validation rules. | Not implemented. |
-| Agent planner | Evidence-backed planner and model routing. | `/plan` is still deterministic scaffold. |
-| Math-to-code | Formula/LaTeX to production-grade code. | Not implemented beyond plan envelope. |
-| GPU distribution | CPU/GPU distributable code generation. | GPU runtime scaffold exists; code generation/distribution not implemented. |
-| Novel math discovery | Representation-first discovery workflow. | Spec present; agent implementation not complete. |
+| Vector memory | OpenSearch FAISS/HNSW vector retrieval using normalized embeddings. | Implemented. |
+| Property graph | Dependency/execution graph. | Removed from current architecture; RDF/SPARQL is the implemented graph layer. |
+| SHACL governance | Closed-world validation rules. | Skipped by product direction for this iteration. |
+| Agent planner | Evidence-backed planner and model routing. | Implemented through vLLM planner with JSON schema validation. |
+| Math-to-code | Formula/LaTeX to code through planner, evidence, code model, file writer, compile/test, retry loop. | Implemented in `/run`; live validation requires Docker/vLLM host. |
+| GPU distribution | vLLM model-serving GPU routing; generated code must pass validation before GPU claims. | vLLM GPU routing implemented; generated runtime GPU code is only claimed if model generates and validates it. |
+| Novel math discovery | Representation-first discovery workflow. | Planner prompts and ontology concepts enforce the workflow; theorem-level novelty still requires human/reasoner validation. |
 
 ## Failure message contract
 
@@ -82,7 +82,7 @@ Required examples:
 - `api.ready`: one or more dependencies are unreachable.
 - `api.sparql`: Fuseki query failed.
 - `api.search`: OpenSearch query failed.
-- `api.plan`: missing goal or production planner not wired.
+- `api.plan`: missing goal, no evidence, vLLM unavailable, or invalid planner JSON schema.
 
 ## Production acceptance gates
 
@@ -97,7 +97,7 @@ Veritas is production-ready only when all gates pass:
 [ ] Fuseki contains RDF triples for source documents, chunks, and formulas.
 [ ] SPARQL traceability query returns formulas and source chunks.
 [ ] OWL-DL reasoner validates ontology consistency.
-[ ] SHACL validates evidence, risk, and control-flow completeness.
+[ ] Optional future SHACL validation validates evidence, risk, and control-flow completeness if re-enabled.
 [ ] Planner runs retrieval + SPARQL before generating any code plan.
 [ ] Generated code includes tests, README, runtime spec, and validation report.
 [ ] CPU/GPU package target is selected from config, not hard-coded.

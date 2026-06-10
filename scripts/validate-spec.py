@@ -101,6 +101,23 @@ def check_turtle_parse() -> dict:
         return {"name": "rdf.turtle_parse", "ok": False, "details": str(exc)}
 
 
+
+def check_no_unused_external_vector_db() -> dict:
+    files = ["docker-compose.yml", ".env.example", "apps/api/src/main.rs", "apps/cli/src/main.rs", "scripts/bootstrap.sh"]
+    hits = []
+    for rel in files:
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        if ("qd" + "rant") in text.lower():
+            hits.append(rel)
+    return {"name": "architecture.no_unused_external_vector_db", "ok": not hits, "details": hits}
+
+
+def check_api_run_implemented() -> dict:
+    text = (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8")
+    required = ['route("/run"', "execute_autonomous_run", "run_command", "call_chat_model_json", "production_candidate_validated"]
+    missing = [item for item in required if item not in text]
+    return {"name": "api.autonomous_run", "ok": not missing, "details": {"missing": missing}}
+
 def check_optional_command(name: str, args: list[str]) -> dict:
     try:
         result = subprocess.run(args, cwd=ROOT, text=True, capture_output=True, timeout=30, check=False)
@@ -126,6 +143,8 @@ def main() -> int:
         check_formula_extraction(),
         check_chunk_formula_boundary(),
         check_turtle_parse(),
+        check_no_unused_external_vector_db(),
+        check_api_run_implemented(),
         check_optional_command("cargo.check", ["cargo", "check", "--workspace"]),
         check_optional_command("docker.compose.config", ["docker", "compose", "config"]),
     ])

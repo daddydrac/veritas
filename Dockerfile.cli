@@ -1,10 +1,10 @@
-FROM rust:1.96-bookworm AS builder
+FROM rust:bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock* ./
 COPY apps ./apps
 RUN cargo build --release -p veritas
 
 FROM docker:27-cli
-RUN apk add --no-cache docker-cli-compose bash ca-certificates
+RUN apk add --no-cache docker-cli-compose bash ca-certificates curl
 COPY --from=builder /app/target/release/veritas /usr/local/bin/veritas
 ENTRYPOINT ["veritas"]

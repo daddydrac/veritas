@@ -1,33 +1,49 @@
 # Validation Run
 
-Date: 2026-06-09
+Generated during the repository update.
 
-## Local validation completed in sandbox
+## Commands executed in this environment
 
-Passed:
-
-```text
-Python ingestion tests: 9 passed
-Python module compilation: passed
-docker-compose.yml YAML parse: passed
-config/veritas.yaml YAML parse: passed
-OWL/RDF parse: passed
-Formula extraction smoke test: passed
-Formula-preserving chunk boundary test: passed
-Generated Turtle parse: passed
-Veritas spec validation: ok=true, failed=0
+```bash
+python3 -m compileall services/embedding services/ingestion/veritas_ingest
 ```
 
-Unavailable in this sandbox:
+Result: passed.
 
-```text
-Docker Compose runtime startup
-Cargo / Rust compilation
-CUDA / GPU runtime validation
-Live vLLM model loading
-Live OpenSearch/Fuseki/Qdrant E2E test
+```bash
+python3 - <<'PY'
+import yaml
+for f in ['docker-compose.yml', 'config/veritas.yaml']:
+    yaml.safe_load(open(f))
+PY
 ```
 
-## Notes
+Result: passed.
 
-The model serving layer is configured for vLLM OpenAI-compatible endpoints. Rust API and CLI components call vLLM over HTTP; vLLM owns Hugging Face model download/cache/runtime execution. The default vLLM image is `vllm/vllm-openai:latest`, matching the official Docker documentation's stable example pattern, and can be pinned with `VERITAS_VLLM_IMAGE`.
+```bash
+PYTHONPATH=services/ingestion pytest -q tests/ingestion
+```
+
+Result: 9 passed.
+
+```bash
+PYTHONPATH=services/ingestion python scripts/validate-spec.py
+```
+
+Result: ok=true, failed=0, unavailable=2.
+
+## Commands not executed here
+
+```bash
+cargo fmt --all -- --check
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+docker compose config
+./scripts/bootstrap.sh
+docker compose --profile models --profile code-model --profile math-model up -d
+docker compose run --rm cli ingest-pdf --path tests/fixtures/sample_math_paper.pdf
+docker compose run --rm cli run "Implement the indexed formula as a tested Rust package" --language rust
+```
+
+Reason: this sandbox does not provide Cargo, Docker, or GPU runtime.

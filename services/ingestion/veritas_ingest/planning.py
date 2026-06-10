@@ -307,7 +307,7 @@ def gather_planning_evidence(prompt: str, cfg: dict[str, Any], *, size: int = 8)
 
 
 def representation_first_analysis(prompt: str, evidence: PlanningEvidence) -> dict[str, Any]:
-    """Return a representation-first analysis scaffold grounded in evidence.
+    """Return a representation-first analysis draft grounded in evidence.
 
     Acceptance criteria:
         1. Follow the MATH.md surface → representation → invariant workflow.
@@ -389,7 +389,7 @@ def build_evidence_backed_plan(prompt: str, cfg: dict[str, Any], *, size: int = 
             "select evidence chunks and formulas",
             "state assumptions, domains, and constraints",
             "define representation map and implementation target",
-            "generate package scaffold with tests and validation report",
+            "run autonomous package generation with tests and validation report",
             "run control-flow and risk checks",
             "emit final result or structured failure envelope",
         ],

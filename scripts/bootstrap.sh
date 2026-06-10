@@ -11,7 +11,7 @@ LOGO
 printf 'Math heavy evidence backed research and development software engineering agent.\n\n'
 cp -n .env.example .env || true
 printf '[veritas] starting core Docker Compose services...\n'
-docker compose up -d --build opensearch fuseki qdrant embedding api
+docker compose up -d --build opensearch fuseki embedding api
 API_PORT=${VERITAS_API_PORT:-8080}
 printf '[veritas] waiting for API readiness on http://localhost:%s/ready ...\n' "$API_PORT"
 for i in $(seq 1 90); do

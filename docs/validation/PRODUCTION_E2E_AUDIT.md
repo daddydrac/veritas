@@ -1,70 +1,43 @@
-# Veritas Production E2E Audit
+# Production E2E Audit
 
-## Verdict
+Veritas now includes source-level implementation for the autonomous workflow: structured planner JSON, planner-selected tools, run workspace creation, vLLM code generation, file writing, compile/test command execution, bounded retries, and final reports.
 
-The current codebase is a stronger scaffold after this pass, but it is **not yet the complete production end-to-end Veritas system**.
-
-It now supports:
+## Implemented services
 
 ```text
-CLI welcome/logo
-Docker Compose startup command
-API health/readiness checks
-arXiv PDF ingestion
-local PDF ingestion
-Docling-first PDF parsing
-formula heuristic extraction
-formula-preserving chunking
-OpenSearch indexing
-Jena/Fuseki RDF upload
-SPARQL proxying
+Rust API
+Rust CLI
+vLLM planner service
+vLLM code service
+vLLM math service
+OpenSearch FAISS/HNSW
+Jena Fuseki RDF/SPARQL
 Openllet reasoner container
-Qdrant service placeholder
-meaningful JSON failure envelopes for ingestion and API paths
+SBERT embedding service
+Docling-first ingestion worker
 ```
 
-It does not yet fully support:
+## Not included by current product direction
 
 ```text
-true autonomous agent orchestration
-model routing
-ontology-guided planning loop
-automatic cross-domain SPARQL planning queries
-SHACL governance execution
-advanced mathematical semantic parsing
-proof/transfer checking
-math-to-code generation
-production-grade package generation
-multi-GPU code distribution
-novel mathematics discovery execution loop
+Qdrant
+Property graph service
+SHACL container/rule pack
+Ollama default path
 ```
 
-## Why the gap matters
+## Host validation required
 
-The architecture diagram describes a complete agentic system. The current repository implements the lower infrastructure and ingestion foundation, but the planner/model/codegen/execution planes are still scaffolded.
+The current sandbox cannot run Docker, Cargo, or GPU workloads. Run this on the target host:
 
-## Required next tickets
-
-1. Implement model-provider abstraction and prompt execution.
-2. Implement planner loop: retrieve evidence → SPARQL grounding → risk checks → code plan.
-3. Implement SHACL validation pack and runner.
-4. Implement vector embedding pipeline into Qdrant.
-5. Implement Formula/LaTeX semantic parser beyond regex extraction.
-6. Implement math-to-code generator with language plugins.
-7. Implement generated package validator.
-8. Implement CPU/GPU backend selection and generated runtime specs.
-9. Implement proof/transfer/novelty research report generation per `MATH.md`.
-10. Add Docker E2E tests with a small PDF fixture and golden expected outputs.
-
-## Validated locally in this sandbox
-
-```text
-Python modules compile: yes
-Formula extraction smoke test: yes
-Formula-safe chunking smoke test: yes
-RDF/Turtle serialization parse: yes
-YAML config parse: yes
-Docker Compose YAML parse with PyYAML: yes
-Rust cargo check: not possible in sandbox, cargo unavailable
-Docker E2E: not possible in sandbox, docker unavailable
+```bash
+cargo fmt --all -- --check
+cargo check --workspace
+cargo test --workspace
+docker compose config
+./scripts/bootstrap.sh
+docker compose --profile models --profile code-model --profile math-model up -d
+docker compose run --rm cli ready
+docker compose run --rm cli ingest-pdf --path tests/fixtures/sample_math_paper.pdf
+docker compose run --rm cli run "Implement the indexed formula as a tested Rust package" --language rust
 ```
