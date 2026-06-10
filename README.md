@@ -11,8 +11,8 @@ Veritas, built in Rust, is an open-source (see LICENSE.md for limits), Docker-fi
 research into auditable engineering plans, searchable evidence, ontology-grounded
 analysis, and validated distributable code packages. It combines PDF ingestion,
 formula extraction, OpenSearch FAISS/HNSW vector RAG, Jena/Fuseki ontology graphs,
-SPARQL grounding, vLLM model serving, and representation-first mathematical
-analysis.
+SPARQL grounding, vLLM model serving, and representation-first symbolic mathematical
+analysis with ontological reasoning.
 
 ```text
 ██╗   ██╗███████╗██████╗ ██╗████████╗ █████╗ ███████╗
