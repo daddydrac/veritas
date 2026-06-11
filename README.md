@@ -496,6 +496,30 @@ Veritas indexes evidence into OpenSearch with FAISS/HNSW vector fields and corre
 
 Veritas chunks prose at a target of 25 words and extends the chunk to the nearest following period or semicolon. Formula spans are never split. Each formula is also emitted as a whole formula chunk so text and formulas can both be embedded, searched, reviewed, and linked to Fuseki facts.
 
+---
+
+# Misc errata / tests
+
+```
+docker compose run --rm cli init
+./scripts/bootstrap.sh
+
+docker compose --env-file .veritas/runtime.env \
+  --profile models \
+  --profile code-model \
+  --profile math-model \
+  up -d
+
+cargo fmt --all -- --check
+cargo check --workspace
+cargo test --workspace
+
+docker compose --env-file .veritas/runtime.env config
+docker compose --env-file .veritas/runtime.env run --rm cli ready
+docker compose --env-file .veritas/runtime.env run --rm cli ingest-pdf --path tests/fixtures/sample_math_paper.pdf
+docker compose --env-file .veritas/runtime.env run --rm cli run "Implement the indexed formula as a tested Rust package" --language rust
+```
+
 ### Artifact status rule
 
 No generated artifact may be marked `production_candidate_validated` unless compile/test validation actually passes. Legacy Python scaffold code generation is marked `generated_unvalidated` and is not a production path.
