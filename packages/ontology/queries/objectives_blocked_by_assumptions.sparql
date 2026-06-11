@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?objective ?assumption WHERE { ?x veritas:achievesObjective ?objective ; veritas:hasAssumption ?assumption . FILTER NOT EXISTS { ?assumption veritas:verifiedBy ?result . } } LIMIT 100

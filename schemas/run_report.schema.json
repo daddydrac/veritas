@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "required": [
+    "run_id",
+    "original_task",
+    "files_changed",
+    "commands_run",
+    "final_status"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "original_task": {
+      "type": "string"
+    },
+    "files_changed": {
+      "type": "array"
+    },
+    "commands_run": {
+      "type": "array"
+    },
+    "final_status": {
+      "type": "string"
+    }
+  }
+}

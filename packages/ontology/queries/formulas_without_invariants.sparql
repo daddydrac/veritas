@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?formula ?expr WHERE { ?formula a veritas:SymbolicShadow . OPTIONAL { ?formula veritas:hasExpressionText ?expr . } FILTER NOT EXISTS { ?artifact veritas:hasSymbolicShadow ?formula ; veritas:hasInvariant ?invariant . } } LIMIT 100

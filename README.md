@@ -456,3 +456,46 @@ RAM:        256 GB
 GPU:        2× RTX 4090 24 GB, RTX 6000 Ada 48 GB, A6000 48 GB, A100, or H100
 Storage:    4 TB NVMe
 ```
+
+---
+
+## Production setup/deployment update
+
+Veritas no longer relies on a committed `.env.example`. Run the setup wizard first:
+
+```bash
+docker compose run --rm cli init
+```
+
+The wizard generates:
+
+```text
+.veritas/config.yaml
+.veritas/runtime.env
+.veritas/docker-compose.override.yaml
+```
+
+The wizard asks for model IDs, Hugging Face token, cache paths, GPU count, per-role GPU IDs, vLLM tensor/pipeline parallelism, OpenSearch settings, Jena/Fuseki settings, SHACL settings, upload paths, ontology paths, chunking policy, formula extraction, human-in-loop policy, generated-code output directory, and functional-programming design preferences.
+
+Start the stack with:
+
+```bash
+./scripts/bootstrap.sh
+docker compose --env-file .veritas/runtime.env --profile models --profile code-model --profile math-model up -d
+```
+
+### Evidence graph behavior
+
+Veritas uploads two categories of data to Fuseki. First, it uploads the ontology schema graph from `packages/ontology/veritas.owl`. Second, it uploads project instance data: source documents, APA citations, chunks, formulas, symbolic shadows, retrieval results, plans, risks, validation results, source code artifacts, build artifacts, and human approval facts. The PDF binary stays in file storage; Fuseki receives semantic facts and links.
+
+### OpenSearch behavior
+
+Veritas indexes evidence into OpenSearch with FAISS/HNSW vector fields and correct search types. Stable IDs are `keyword`, prose and descriptions are `text`, formulas are `nested`, LaTeX supports both analyzed text and exact keyword lookup, and embeddings are `knn_vector` fields with normalized SBERT vectors.
+
+### Formula and text chunking
+
+Veritas chunks prose at a target of 25 words and extends the chunk to the nearest following period or semicolon. Formula spans are never split. Each formula is also emitted as a whole formula chunk so text and formulas can both be embedded, searched, reviewed, and linked to Fuseki facts.
+
+### Artifact status rule
+
+No generated artifact may be marked `production_candidate_validated` unless compile/test validation actually passes. Legacy Python scaffold code generation is marked `generated_unvalidated` and is not a production path.

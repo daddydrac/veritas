@@ -13,6 +13,7 @@ from .docling_pdf import convert_pdf
 from .embeddings import attach_embeddings
 from .errors import VeritasFailure, emit_failure
 from .codegen import generate_package
+from .citations import citation_from_metadata
 from .ontology import upload_ontology
 from .planning import build_evidence_backed_plan
 from .sinks import chunks_to_turtle, index_chunks, upload_turtle_to_fuseki
@@ -77,8 +78,10 @@ def _ingest_pdf(
         docling_dir / paper_id.replace("/", "_"),
         extract_formulas=pdf_cfg.get("extract_formulas", True),
     )
+    citation = citation_from_metadata(metadata, pdf)
     metadata = {
         **metadata,
+        **citation,
         "pdf_sha256": paper_hash(pdf),
         "pdf_path": str(pdf),
         "parser": converted["parser"],
@@ -237,6 +240,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
 
 def cmd_generate_code(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
+    print("[veritas] WARNING: Python generate-code is legacy scaffold mode. Production codegen uses the Rust API /run path.")
     result = generate_package(args.prompt, args.language, cfg)
     print(json.dumps({
         "ok": True,

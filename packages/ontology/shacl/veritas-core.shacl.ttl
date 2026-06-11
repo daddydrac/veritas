@@ -1,0 +1,55 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+veritas:ResearchObjectiveShape a sh:NodeShape ;
+  sh:targetClass veritas:ResearchObjective ;
+  sh:property [ sh:path ^veritas:achievesObjective ; sh:minCount 1 ; sh:message "Every ResearchObjective must be achieved by at least one Plan, Task, Process, or Result." ] .
+
+veritas:PlanShape a sh:NodeShape ;
+  sh:targetClass veritas:Plan ;
+  sh:property [ sh:path veritas:hasTaskSpecification ; sh:minCount 1 ; sh:class veritas:TaskSpecification ; sh:message "Every Plan must contain at least one TaskSpecification." ] ;
+  sh:property [ sh:path veritas:validatedBy ; sh:minCount 1 ; sh:class veritas:ValidationCheckSpecification ; sh:message "Every production-bound Plan must have a ValidationCheckSpecification." ] .
+
+veritas:RiskShape a sh:NodeShape ;
+  sh:targetClass veritas:Risk ;
+  sh:or (
+    [ sh:property [ sh:path veritas:mitigatedBy ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path veritas:acceptedByDecision ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "blocked" ] ]
+  ) ;
+  sh:message "Every Risk must be mitigated, explicitly accepted, or blocked." .
+
+veritas:SymbolicShadowShape a sh:NodeShape ;
+  sh:targetClass veritas:SymbolicShadow ;
+  sh:property [ sh:path veritas:derivedFrom ; sh:minCount 1 ; sh:message "Every SymbolicShadow used by Veritas must be derived from evidence." ] ;
+  sh:property [ sh:path veritas:hasExpressionText ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "Every SymbolicShadow must have expression text." ] ;
+  sh:property [ sh:path veritas:hasFormulaSource ; sh:minCount 1 ; sh:message "Every SymbolicShadow must record extraction source." ] .
+
+veritas:InvariantShape a sh:NodeShape ;
+  sh:targetClass veritas:Invariant ;
+  sh:property [ sh:path veritas:hasTransformationFamily ; sh:minCount 1 ; sh:message "Every Invariant must specify the transformation family under which it is invariant." ] .
+
+veritas:RepresentationMapShape a sh:NodeShape ;
+  sh:targetClass veritas:RepresentationMap ;
+  sh:property [ sh:path veritas:mapsFromSurface ; sh:minCount 1 ; sh:message "RepresentationMap must map from a SurfacePhenomenonDescription." ] ;
+  sh:property [ sh:path veritas:mapsToLatentStructure ; sh:minCount 1 ; sh:message "RepresentationMap must map to a LatentStructureDescription." ] .
+
+veritas:GenerativeNecessityClaimShape a sh:NodeShape ;
+  sh:targetClass veritas:GenerativeNecessityClaim ;
+  sh:property [ sh:path veritas:supportedByEvidence ; sh:minCount 1 ; sh:message "GenerativeNecessityClaim must be evidence-backed." ] ;
+  sh:property [ sh:path veritas:hasProofStatus ; sh:minCount 1 ; sh:message "GenerativeNecessityClaim must have proof status: speculative, plausible, proved, formalized, false, or blocked." ] ;
+  sh:property [ sh:path veritas:testedByTransferTest ; sh:minCount 1 ; sh:message "GenerativeNecessityClaim must include a transfer test before discovery status is claimed." ] .
+
+veritas:SourceCodeArtifactShape a sh:NodeShape ;
+  sh:targetClass veritas:SourceCodeArtifact ;
+  sh:property [ sh:path veritas:validatedBy ; sh:minCount 1 ; sh:message "SourceCodeArtifact must have validation checks." ] ;
+  sh:property [ sh:path veritas:testedBy ; sh:minCount 1 ; sh:message "SourceCodeArtifact must be connected to tests." ] .
+
+veritas:BuildArtifactShape a sh:NodeShape ;
+  sh:targetClass veritas:BuildArtifact ;
+  sh:property [ sh:path veritas:hasStatus ; sh:minCount 1 ; sh:message "BuildArtifact must have explicit status." ] .
+
+veritas:LoopSpecificationShape a sh:NodeShape ;
+  sh:targetClass veritas:LoopSpecification ;
+  sh:property [ sh:path veritas:hasTerminationCondition ; sh:minCount 1 ; sh:message "LoopSpecification must have a termination condition." ] .

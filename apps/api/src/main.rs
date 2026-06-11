@@ -39,6 +39,7 @@ struct AppState {
     fuseki_query_url: String,
     fuseki_ping_url: String,
     embedding_url: String,
+    shacl_url: String,
     require_models: bool,
     planner_model: ModelRole,
     code_model: ModelRole,
@@ -147,6 +148,8 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "http://fuseki:3030/$/ping".into()),
         embedding_url: env::var("VERITAS_EMBEDDING_URL")
             .unwrap_or_else(|_| "http://embedding:8090".into()),
+        shacl_url: env::var("VERITAS_SHACL_URL")
+            .unwrap_or_else(|_| "http://shacl:8080".into()),
         require_models: bool_env("VERITAS_REQUIRE_MODELS", true),
         planner_model: model_role("planner", "VERITAS_PLANNER", "http://vllm-planner:8000", "Qwen/Qwen2.5-Coder-7B-Instruct", "veritas-planner", 0.05, 0.9, 2200),
         code_model: model_role("code_generation", "VERITAS_CODE", "http://vllm-code:8000", "Qwen/Qwen2.5-Coder-14B-Instruct", "veritas-code", 0.02, 0.9, 7000),
@@ -222,12 +225,14 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let opensearch = probe(&state.http, &state.opensearch_url, "opensearch").await;
     let fuseki = probe(&state.http, &state.fuseki_ping_url, "fuseki").await;
     let embedding = probe(&state.http, &format!("{}/health", state.embedding_url.trim_end_matches('/')), "embedding").await;
+    let shacl = probe(&state.http, &format!("{}/health", state.shacl_url.trim_end_matches('/')), "shacl").await;
     let planner = probe_model(&state.http, &state.planner_model).await;
     let code = probe_model(&state.http, &state.code_model).await;
     let math = probe_model(&state.http, &state.math_model).await;
     let base_ok = opensearch["ok"].as_bool().unwrap_or(false)
         && fuseki["ok"].as_bool().unwrap_or(false)
-        && embedding["ok"].as_bool().unwrap_or(false);
+        && embedding["ok"].as_bool().unwrap_or(false)
+        && shacl["ok"].as_bool().unwrap_or(false);
     let model_ok = planner["ok"].as_bool().unwrap_or(false)
         && code["ok"].as_bool().unwrap_or(false)
         && math["ok"].as_bool().unwrap_or(false);
@@ -243,6 +248,7 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "opensearch": opensearch,
                 "fuseki": fuseki,
                 "embedding": embedding,
+                "shacl": shacl,
                 "vllm_planner": planner,
                 "vllm_code": code,
                 "vllm_math": math
@@ -277,7 +283,7 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "normalized": true,
                 "cosine_search": "OpenSearch FAISS/HNSW"
             },
-            "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet"},
+            "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet", "shacl": state.shacl_url},
             "remote_fallback": {"enabled": state.remote_model_enabled, "base_url": state.remote_model_base_url, "model": state.remote_model_name}
         })),
     )
@@ -462,7 +468,7 @@ async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Resul
     let user = json!({
         "goal": goal,
         "required_json_schema": plan_schema_description(),
-        "available_tools": ["retrieval", "sparql", "math_reasoning", "code_generation", "local_command", "test_runner"],
+        "available_tools": ["retrieval", "sparql", "shacl_validate", "math_reasoning", "code_generation", "local_command", "test_runner"],
         "opensearch_evidence": compact_search_evidence(&evidence),
         "sparql_formula_trace": formula_trace,
         "hard_requirements": [
@@ -543,10 +549,12 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
     let run_id = format!("run-{}-{}", now_millis(), uuid::Uuid::new_v4().simple());
     let workspace = state.runs_dir.join(&run_id);
     fs::create_dir_all(&workspace).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.workspace_create", format!("Could not create run workspace: {error}"), "Ensure the API container has write access to /workspace/data/runs."))?;
+    persist_run_state(&workspace, "Created", json!({"goal": req.goal})).await?;
 
     let language = req.language.unwrap_or_else(|| "rust".to_string());
     let max_retries = req.max_retries.unwrap_or(state.max_retries).min(5);
     let plan_envelope = build_structured_plan(state, &req.goal, req.size.unwrap_or(8)).await?;
+    persist_run_state(&workspace, "Planned", json!({"plan_envelope": plan_envelope})).await?;
     let plan = plan_envelope.get("plan").cloned().unwrap_or_else(|| json!({}));
     let mut tool_calls = Vec::new();
     let mut files_changed: Vec<String> = Vec::new();
@@ -565,6 +573,7 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
         let code_prompt = build_code_generation_prompt(&req.goal, &language, &plan, &plan_envelope["evidence"], &tool_outputs, &last_error_summary, attempt);
         let generated = call_chat_model_json(state, &state.code_model, codegen_system_prompt(), &code_prompt).await?;
         validate_codegen_schema(&generated)?;
+        persist_run_state(&workspace, "GeneratingCode", json!({"attempt": attempt})).await?;
         write_generated_files(&workspace, &generated, &mut files_changed).await?;
         code_package = generated.clone();
 
@@ -572,6 +581,7 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
         let mut all_passed = true;
         let mut attempt_results = Vec::new();
         for command in commands {
+            persist_run_state(&workspace, "RunningValidation", json!({"attempt": attempt, "command": command})).await?;
             let result = run_command(&workspace, &command, state.command_timeout_secs).await;
             commands_run.push(result.clone());
             attempt_results.push(result.clone());
@@ -582,9 +592,11 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
         validation_results.push(json!({"attempt": attempt, "results": attempt_results}));
         if all_passed {
             final_status = "production_candidate_validated".to_string();
+            persist_run_state(&workspace, "Validated", json!({"attempt": attempt})).await?;
             break;
         }
         last_error_summary = validation_results.last().cloned().unwrap_or_else(|| json!({})).to_string();
+        persist_run_state(&workspace, "Repairing", json!({"attempt": attempt, "failure_summary": last_error_summary})).await?;
         retry_history.push(json!({
             "attempt": attempt,
             "reason": "compile_or_test_failure",
@@ -634,6 +646,13 @@ async fn execute_planner_selected_tools(state: &AppState, plan: &Value, goal: &s
                     let result = run_sparql(state, query).await;
                     tool_calls.push(json!({"tool": "sparql", "success": result.is_ok()}));
                     outputs.push(json!({"tool": "sparql", "step": step, "result": result.ok()}));
+                }
+                "shacl_validate" => {
+                    let data_ttl = step.pointer("/input/data_ttl").and_then(Value::as_str).unwrap_or("");
+                    let shapes_ttl = step.pointer("/input/shapes_ttl").and_then(Value::as_str).unwrap_or("");
+                    let result = run_shacl_validation(state, data_ttl, shapes_ttl).await;
+                    tool_calls.push(json!({"tool": "shacl_validate", "success": result.is_ok()}));
+                    outputs.push(json!({"tool": "shacl_validate", "step": step, "result": result.ok()}));
                 }
                 "math_reasoning" => {
                     let input = step.get("input").cloned().unwrap_or_else(|| json!({"goal": goal})).to_string();
@@ -748,6 +767,9 @@ fn commands_for_run(workspace: &Path, language: &str, generated: &Value) -> Vec<
 
 async fn run_command(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
     let started = now_millis();
+    if !command_allowed(command) {
+        return json!({"command": command, "success": false, "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Use cargo test/check/fmt/clippy, python -m pytest/build, ruff, mypy, cmake, or ctest unless the operator explicitly extends the allowlist."});
+    }
     let result = timeout(
         Duration::from_secs(timeout_secs),
         Command::new("sh").arg("-lc").arg(command).current_dir(workspace).output(),
@@ -892,9 +914,38 @@ async fn call_chat_model_json(state: &AppState, role: &ModelRole, system: &str, 
 }
 
 async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, user: &str, json_mode: bool) -> Result<Value, ApiFailure> {
-    let url = format!("{}/v1/chat/completions", role.url.trim_end_matches('/'));
+    let primary = send_chat_completion(state, &role.url, &role.served_model_name, role, system, user, json_mode).await;
+    match primary {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            if state.remote_model_enabled && !state.remote_model_base_url.trim().is_empty() && !state.remote_model_name.trim().is_empty() {
+                let fallback_role = ModelRole {
+                    role: role.role,
+                    url: state.remote_model_base_url.clone(),
+                    model: state.remote_model_name.clone(),
+                    served_model_name: state.remote_model_name.clone(),
+                    temperature: role.temperature,
+                    top_p: role.top_p,
+                    max_tokens: role.max_tokens,
+                    timeout_secs: role.timeout_secs,
+                };
+                let remote = send_chat_completion(state, &fallback_role.url, &fallback_role.served_model_name, &fallback_role, system, user, json_mode).await;
+                return remote.map_err(|remote_error| ApiFailure::new(
+                    StatusCode::BAD_GATEWAY,
+                    "model.all_providers_failed",
+                    "Both local vLLM and configured remote OpenAI-compatible fallback failed.",
+                    "Check local vLLM health, remote endpoint/API key, GPU memory, and model IDs."
+                ).with_details(json!({"local_error": error.message, "remote_error": remote_error.message})));
+            }
+            Err(error)
+        }
+    }
+}
+
+async fn send_chat_completion(state: &AppState, base_url: &str, served_model_name: &str, role: &ModelRole, system: &str, user: &str, json_mode: bool) -> Result<Value, ApiFailure> {
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
     let mut payload = json!({
-        "model": role.served_model_name,
+        "model": served_model_name,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": role.temperature,
         "top_p": role.top_p,
@@ -902,16 +953,60 @@ async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, u
     });
     if json_mode {
         payload["response_format"] = json!({"type": "json_object"});
+        payload["guided_json"] = plan_schema_description();
     }
     let fut = state.http.post(&url).json(&payload).send();
-    let response = timeout(Duration::from_secs(role.timeout_secs), fut).await.map_err(|_| ApiFailure::new(StatusCode::GATEWAY_TIMEOUT, "vllm.timeout", format!("vLLM request for role {} timed out after {}s", role.role, role.timeout_secs), "Increase the role timeout or use a smaller/faster model."))?.map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.transport", format!("vLLM request failed before response: {error}"), "Start the selected vLLM Docker Compose profile or set the role URL to a reachable OpenAI-compatible endpoint."))?;
+    let response = timeout(Duration::from_secs(role.timeout_secs), fut)
+        .await
+        .map_err(|_| ApiFailure::new(StatusCode::GATEWAY_TIMEOUT, "vllm.timeout", format!("Model request for role {} timed out after {}s", role.role, role.timeout_secs), "Increase the role timeout, reduce context length, or choose a smaller/faster model."))?
+        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.transport", format!("Model request failed before response: {error}"), "Start the selected vLLM Docker Compose profile or configure a reachable OpenAI-compatible fallback."))?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
     if !status.is_success() {
-        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.upstream", format!("vLLM returned HTTP {}", status.as_u16()), "Check model ID, Hugging Face token, GPU memory, and vLLM logs.").with_details(body));
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.upstream", format!("Model endpoint returned HTTP {}", status.as_u16()), "Check model ID, Hugging Face token, GPU memory, provider URL, and logs.").with_details(body));
     }
     Ok(body)
+}
+
+async fn run_shacl_validation(state: &AppState, data_ttl: &str, shapes_ttl: &str) -> Result<Value, ApiFailure> {
+    let url = format!("{}/validate", state.shacl_url.trim_end_matches('/'));
+    let response = state.http.post(url).json(&json!({"data_ttl": data_ttl, "shapes_ttl": if shapes_ttl.trim().is_empty() { Value::Null } else { json!(shapes_ttl) }})).send().await
+        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "shacl.transport", format!("SHACL validator request failed: {error}"), "Start the shacl service and inspect `docker compose logs shacl`."))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
+    if !status.is_success() {
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "shacl.upstream", format!("SHACL validator returned HTTP {}", status.as_u16()), "Check SHACL service and rule pack.").with_details(body));
+    }
+    Ok(body)
+}
+
+async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -> Result<(), ApiFailure> {
+    let state_file = workspace.join("state.json");
+    let event_file = workspace.join("events.jsonl");
+    let event = json!({"ts_ms": now_millis(), "state": state_name, "payload": payload});
+    fs::write(&state_file, serde_json::to_string_pretty(&event).unwrap_or_else(|_| event.to_string())).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.state_write", format!("Could not write state file: {error}"), "Check run workspace permissions."))?;
+    let mut line = serde_json::to_string(&event).unwrap_or_else(|_| event.to_string());
+    line.push('\n');
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new().create(true).append(true).open(event_file).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.event_open", format!("Could not open events log: {error}"), "Check run workspace permissions."))?;
+    file.write_all(line.as_bytes()).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.event_write", format!("Could not append events log: {error}"), "Check run workspace permissions."))?;
+    Ok(())
+}
+
+fn command_allowed(command: &str) -> bool {
+    let c = command.trim();
+    let allowed_prefixes = [
+        "cargo fmt", "cargo check", "cargo test", "cargo clippy",
+        "python -m pytest", "python3 -m pytest", "python -m build", "python3 -m build",
+        "ruff", "mypy", "cmake", "ctest"
+    ];
+    let denied = ["rm ", "rm -", "sudo", "curl ", "wget ", ":(){", "mkfs", "dd ", "chmod 777", "> /etc", "docker run"];
+    !denied.iter().any(|prefix| c.contains(prefix)) && allowed_prefixes.iter().any(|prefix| c.starts_with(prefix))
 }
 
 fn extract_model_content(raw: &Value) -> Option<String> {

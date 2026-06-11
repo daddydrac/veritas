@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?code WHERE { ?code a veritas:SourceCodeArtifact . FILTER NOT EXISTS { ?code veritas:validatedBy ?check . } } LIMIT 100

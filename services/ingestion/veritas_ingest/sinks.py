@@ -58,8 +58,15 @@ def ensure_index(client: Any, index: str, cfg: dict[str, Any] | None = None) -> 
             "properties": {
                 "chunk_id": {"type": "keyword"},
                 "paper_id": {"type": "keyword"},
+                "doc_id": {"type": "keyword"},
                 "ordinal": {"type": "integer"},
-                "title": {"type": "text"},
+                "chunk_type": {"type": "keyword"},
+                "boundary_status": {"type": "keyword"},
+                "title": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 512}}},
+                "abstract": {"type": "text"},
+                "apa_citation": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 1024}}},
+                "source_url": {"type": "keyword"},
+                "content_hash": {"type": "keyword"},
                 "text": {"type": "text"},
                 "embedding_model": {"type": "keyword"},
                 "embedding_norm": {"type": "float"},
@@ -79,10 +86,19 @@ def ensure_index(client: Any, index: str, cfg: dict[str, Any] | None = None) -> 
                 "formulas": {
                     "type": "nested",
                     "properties": {
+                        "formula_id": {"type": "keyword"},
                         "latex": {
                             "type": "text",
-                            "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
+                            "fields": {"raw": {"type": "keyword", "ignore_above": 2048}},
                         },
+                        "normalized_latex": {
+                            "type": "text",
+                            "fields": {"raw": {"type": "keyword", "ignore_above": 2048}},
+                        },
+                        "description": {"type": "text"},
+                        "formula_image_path": {"type": "keyword"},
+                        "page": {"type": "integer"},
+                        "bbox": {"type": "float"},
                         "raw_latex": {
                             "type": "text",
                             "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
@@ -124,9 +140,15 @@ def index_chunks(opensearch_url: str, index: str, chunks: list[dict], cfg: dict[
                 f"chunk {chunk.get('chunk_id')} is missing vector field `{field}`; "
                 "run embedding before indexing."
             )
+        meta = chunk.get("metadata", {}) or {}
         doc = {
             **chunk,
-            "title": chunk.get("metadata", {}).get("title", ""),
+            "doc_id": chunk.get("paper_id"),
+            "title": meta.get("title", ""),
+            "abstract": meta.get("summary", ""),
+            "apa_citation": meta.get("apa_citation", ""),
+            "source_url": meta.get("source_url") or meta.get("entry_url") or meta.get("pdf_url", ""),
+            "content_hash": meta.get("pdf_sha256", ""),
         }
         client.index(index=index, id=chunk["chunk_id"], body=doc, refresh=False)
     client.indices.refresh(index=index)
@@ -154,6 +176,13 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
         g.add((piri, RDF.type, ns.SourceDocument))
         g.add((piri, DCTERMS.title, Literal(str(meta.get("title", "")))))
         g.add((piri, ns.hasIdentifier, Literal(paper_id)))
+        if meta.get("apa_citation"):
+            g.add((piri, DCTERMS.bibliographicCitation, Literal(str(meta["apa_citation"]))))
+        if meta.get("authors"):
+            for author in meta.get("authors", []):
+                g.add((piri, DCTERMS.creator, Literal(str(author))))
+        if meta.get("year"):
+            g.add((piri, DCTERMS.date, Literal(str(meta["year"]))))
         if meta.get("pdf_sha256"):
             g.add((piri, ns.hasContentHash, Literal(str(meta["pdf_sha256"]))))
         if meta.get("pdf_url"):
@@ -179,6 +208,10 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
             g.add((firi, RDF.type, ns.SymbolicShadow))
             g.add((firi, ns.derivedFrom, ciri))
             g.add((firi, ns.hasExpressionText, Literal(latex)))
+            if formula.get("formula_id"):
+                g.add((firi, ns.hasIdentifier, Literal(str(formula.get("formula_id")))))
+            if formula.get("description"):
+                g.add((firi, ns.hasDescription, Literal(str(formula.get("description")))))
             if formula.get("raw_latex"):
                 g.add((firi, ns.hasRawExpressionText, Literal(str(formula.get("raw_latex")))))
             g.add((firi, ns.hasFormulaSource, Literal(str(formula.get("source", "unknown")))))

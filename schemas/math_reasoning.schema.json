@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": [
+    "summary",
+    "assumptions",
+    "invariants",
+    "risks"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "assumptions": {
+      "type": "array"
+    },
+    "invariants": {
+      "type": "array"
+    },
+    "risks": {
+      "type": "array"
+    }
+  }
+}

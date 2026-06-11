@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?build WHERE { ?build a veritas:BuildArtifact . FILTER NOT EXISTS { ?source veritas:buildsInto ?build ; veritas:testedBy ?test . } } LIMIT 100

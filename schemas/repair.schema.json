@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": [
+    "failed_command",
+    "failure_summary",
+    "files",
+    "commands"
+  ],
+  "properties": {
+    "failed_command": {
+      "type": "string"
+    },
+    "failure_summary": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array"
+    },
+    "commands": {
+      "type": "array"
+    }
+  }
+}

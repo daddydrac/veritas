@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?risk WHERE { ?risk a veritas:Risk . FILTER NOT EXISTS { ?risk veritas:mitigatedBy ?m . } FILTER NOT EXISTS { ?risk veritas:acceptedByDecision ?d . } } LIMIT 100

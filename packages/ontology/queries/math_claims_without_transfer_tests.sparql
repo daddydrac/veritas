@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?claim WHERE { ?claim a veritas:GenerativeNecessityClaim . FILTER NOT EXISTS { ?claim veritas:testedByTransferTest ?test . } } LIMIT 100

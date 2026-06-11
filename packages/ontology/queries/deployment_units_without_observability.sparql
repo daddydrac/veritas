@@ -1,0 +1,2 @@
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+SELECT ?unit WHERE { ?unit a veritas:DeploymentUnitSpecification . FILTER NOT EXISTS { ?unit veritas:emitsSignal ?signal . } FILTER NOT EXISTS { ?unit veritas:observedBy ?signal . } } LIMIT 100

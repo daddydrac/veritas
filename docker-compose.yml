@@ -23,6 +23,7 @@ x-veritas-env: &veritas-env
   VERITAS_CODE_VLLM_URL: ${VERITAS_CODE_VLLM_URL:-http://vllm-code:8000}
   VERITAS_MATH_VLLM_URL: ${VERITAS_MATH_VLLM_URL:-http://vllm-math:8000}
   VERITAS_REQUIRE_MODELS: ${VERITAS_REQUIRE_MODELS:-false}
+  VERITAS_SHACL_URL: http://shacl:8080
 
 x-vllm-env: &vllm-env
   HF_HOME: /models/huggingface
@@ -38,9 +39,6 @@ x-vllm-common: &vllm-common
     <<: *vllm-env
   volumes:
     - hf-cache:/models/huggingface
-  gpus:
-    - device_ids: ["${VERITAS_GPU_DEVICE_ID:-0}"]
-      capabilities: ["gpu"]
   restart: unless-stopped
 
 services:
@@ -178,6 +176,22 @@ services:
         condition: service_healthy
     profiles: ["tools"]
 
+
+  shacl:
+    build:
+      context: .
+      dockerfile: services/shacl/Dockerfile
+    ports:
+      - "${VERITAS_SHACL_PORT:-8088}:8080"
+    volumes:
+      - ./packages/ontology/shacl:/workspace/shacl:ro
+      - ./data:/workspace/data
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8080/health\", timeout=3).read()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   reasoner:
     build:
       context: .
@@ -191,6 +205,9 @@ services:
 
   vllm-planner:
     <<: *vllm-common
+    gpus:
+      - device_ids: ["${VERITAS_PLANNER_GPU_DEVICE_IDS:-0}"]
+        capabilities: ["gpu"]
     command: >
       --model ${VERITAS_PLANNER_MODEL:-Qwen/Qwen2.5-Coder-7B-Instruct}
       --served-model-name ${VERITAS_PLANNER_SERVED_MODEL_NAME:-veritas-planner}
@@ -198,7 +215,10 @@ services:
       --port 8000
       --dtype ${VERITAS_VLLM_DTYPE:-auto}
       --max-model-len ${VERITAS_PLANNER_MAX_MODEL_LEN:-32768}
+      --tensor-parallel-size ${VERITAS_PLANNER_TENSOR_PARALLEL_SIZE:-1}
+      --pipeline-parallel-size ${VERITAS_PLANNER_PIPELINE_PARALLEL_SIZE:-1}
       --gpu-memory-utilization ${VERITAS_PLANNER_GPU_MEMORY_UTILIZATION:-0.30}
+      --structured-outputs-config.backend=auto
       --trust-remote-code
     ports:
       - "${VERITAS_PLANNER_VLLM_PORT:-8001}:8000"
@@ -211,6 +231,9 @@ services:
 
   vllm-code:
     <<: *vllm-common
+    gpus:
+      - device_ids: ["${VERITAS_CODE_GPU_DEVICE_IDS:-0}"]
+        capabilities: ["gpu"]
     command: >
       --model ${VERITAS_CODE_MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct}
       --served-model-name ${VERITAS_CODE_SERVED_MODEL_NAME:-veritas-code}
@@ -218,7 +241,10 @@ services:
       --port 8000
       --dtype ${VERITAS_VLLM_DTYPE:-auto}
       --max-model-len ${VERITAS_CODE_MAX_MODEL_LEN:-32768}
+      --tensor-parallel-size ${VERITAS_CODE_TENSOR_PARALLEL_SIZE:-1}
+      --pipeline-parallel-size ${VERITAS_CODE_PIPELINE_PARALLEL_SIZE:-1}
       --gpu-memory-utilization ${VERITAS_CODE_GPU_MEMORY_UTILIZATION:-0.60}
+      --structured-outputs-config.backend=auto
       --trust-remote-code
     ports:
       - "${VERITAS_CODE_VLLM_PORT:-8002}:8000"
@@ -231,6 +257,9 @@ services:
 
   vllm-math:
     <<: *vllm-common
+    gpus:
+      - device_ids: ["${VERITAS_MATH_GPU_DEVICE_IDS:-0}"]
+        capabilities: ["gpu"]
     command: >
       --model ${VERITAS_MATH_MODEL:-allenai/Olmo-3-7B-Instruct}
       --served-model-name ${VERITAS_MATH_SERVED_MODEL_NAME:-veritas-math}
@@ -238,7 +267,10 @@ services:
       --port 8000
       --dtype ${VERITAS_VLLM_DTYPE:-auto}
       --max-model-len ${VERITAS_MATH_MAX_MODEL_LEN:-32768}
+      --tensor-parallel-size ${VERITAS_MATH_TENSOR_PARALLEL_SIZE:-1}
+      --pipeline-parallel-size ${VERITAS_MATH_PIPELINE_PARALLEL_SIZE:-1}
       --gpu-memory-utilization ${VERITAS_MATH_GPU_MEMORY_UTILIZATION:-0.30}
+      --structured-outputs-config.backend=auto
       --trust-remote-code
     ports:
       - "${VERITAS_MATH_VLLM_PORT:-8003}:8000"

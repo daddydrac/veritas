@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": [
+    "phase",
+    "question",
+    "options"
+  ],
+  "properties": {
+    "phase": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "options": {
+      "type": "array"
+    }
+  }
+}

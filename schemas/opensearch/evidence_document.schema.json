@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "required": [
+    "chunk_id",
+    "paper_id",
+    "text"
+  ],
+  "properties": {
+    "chunk_id": {
+      "type": "string"
+    },
+    "paper_id": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "embedding": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "formulas": {
+      "type": "array"
+    },
+    "apa_citation": {
+      "type": "string"
+    }
+  }
+}
