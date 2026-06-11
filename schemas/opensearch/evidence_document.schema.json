@@ -1,31 +1,66 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/daddydrac/veritas/schemas/opensearch/evidence_document.schema.json",
+  "title": "Veritas OpenSearch Evidence Document",
   "type": "object",
-  "required": [
-    "chunk_id",
-    "paper_id",
-    "text"
-  ],
+  "required": ["chunk_id", "paper_id", "text"],
   "properties": {
-    "chunk_id": {
-      "type": "string"
-    },
-    "paper_id": {
-      "type": "string"
-    },
-    "text": {
-      "type": "string"
-    },
-    "embedding": {
+    "doc_id": {"type": "string"},
+    "paper_id": {"type": "string"},
+    "chunk_id": {"type": "string"},
+    "formula_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "source_type": {"type": "string"},
+    "status": {"type": "string"},
+    "sha256": {"type": "string"},
+    "title": {"type": "string"},
+    "abstract": {"type": "string"},
+    "apa_citation": {"type": "string"},
+    "text": {"type": "string"},
+    "chunk_text": {"type": "string"},
+    "formula_description": {"type": "string"},
+    "technical_summary": {"type": "string"},
+    "embedding_model": {"type": "string"},
+    "embedding_norm": {"type": "number"},
+    "embedding": {"type": "array", "items": {"type": "number"}},
+    "formula_embedding": {"type": "array", "items": {"type": "number"}},
+    "formulas": {
       "type": "array",
       "items": {
-        "type": "number"
+        "type": "object",
+        "required": ["formula_id", "latex"],
+        "properties": {
+          "formula_id": {"type": "string"},
+          "latex": {"type": "string"},
+          "normalized_latex": {"type": "string"},
+          "description": {"type": "string"},
+          "formula_image_path": {"type": "string"},
+          "formula_image_status": {"type": "string"},
+          "latex_ocr_status": {"type": "string"},
+          "human_validated": {"type": "boolean"},
+          "page": {"type": "integer"},
+          "bbox": {"type": "array", "items": {"type": "number"}},
+          "source": {"type": "string"},
+          "pattern": {"type": "string"},
+          "confidence": {"type": "number"}
+        },
+        "additionalProperties": true
       }
     },
-    "formulas": {
-      "type": "array"
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "apa": {"type": "string"},
+          "doi": {"type": "string"},
+          "url": {"type": "string"},
+          "validated": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      }
     },
-    "apa_citation": {
-      "type": "string"
-    }
-  }
+    "metadata": {"type": "object"}
+  },
+  "additionalProperties": true
 }

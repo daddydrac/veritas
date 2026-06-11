@@ -7,6 +7,19 @@ services:
   opensearch:
     url_env: VERITAS_OPENSEARCH_URL
     index_env: VERITAS_OPENSEARCH_INDEX
+    base_index_env: VERITAS_OPENSEARCH_INDEX_BASE
+    read_alias_env: VERITAS_OPENSEARCH_READ_ALIAS
+    write_alias_env: VERITAS_OPENSEARCH_WRITE_ALIAS
+    versioned_index_env: VERITAS_OPENSEARCH_VERSIONED_INDEX
+    mapping_version_env: VERITAS_OPENSEARCH_MAPPING_VERSION
+    migration_command: veritas opensearch-migrate
+    status_command: veritas opensearch-status
+    aliases:
+      base_index: veritas-papers
+      read_alias: veritas-papers-read
+      write_alias: veritas-papers-write
+      versioned_index: veritas-papers-v1
+      mapping_version: v1
     vector:
       enabled: true
       field: embedding
@@ -119,7 +132,11 @@ ingestion:
     preserve_equation_context: true
     formula_context_window_chars: 650
     extract_formula_images: true
-    formula_ocr_provider: pluggable_pending_local_model
+    formula_ocr_provider: ${VERITAS_LATEX_OCR_PROVIDER:-heuristic}
+    formula_ocr_command_env: VERITAS_LATEX_OCR_COMMAND
+    formula_ocr_url_env: VERITAS_LATEX_OCR_URL
+    formula_ocr_timeout_secs_env: VERITAS_LATEX_OCR_TIMEOUT_SECS
+    human_validate_formulas: true
     human_validate_citations: true
   chunking:
     target_chars: 1800
@@ -139,10 +156,20 @@ ingestion:
     raw_pdf_dir: /workspace/data/papers
     docling_dir: /workspace/data/docling
     chunks_dir: /workspace/data/chunks
+    formula_image_dir: /workspace/data/formulas
 ontology:
   file: /workspace/ontology/veritas.owl
-  graph_uri: https://github.com/daddydrac/veritas/graph/research
-  ontology_graph_uri: https://github.com/daddydrac/veritas/graph/ontology
+  graph_uri: urn:veritas:graph:document
+  ontology_graph_uri: urn:veritas:graph:ontology
+  document_graph_base_uri: urn:veritas:graph:document
+  run_graph_base_uri: urn:veritas:graph:run
+  validation_graph_base_uri: urn:veritas:graph:validation
+  named_graph_policy:
+    ontology: ontology TBox axioms and class/property declarations
+    document: source document, citation, chunks, formulas, formula image metadata, evidence facts
+    run: plans, tasks, generated source artifacts, model routes, human approvals
+    validation: command results, SHACL findings, verification results, build status
+    binary_storage: PDFs and generated binaries stay in file/object storage; Fuseki stores semantic facts and links only
   prefixes:
     veritas: https://github.com/daddydrac/veritas/ontology#
     rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#

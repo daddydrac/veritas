@@ -12,11 +12,13 @@ from .config import load_config
 from .docling_pdf import convert_pdf
 from .embeddings import attach_embeddings
 from .errors import VeritasFailure, emit_failure
+from .formula_images import attach_formula_images
+from .human_review import review_formulas_noninteractive
 from .codegen import generate_package
 from .citations import citation_from_metadata
 from .ontology import upload_ontology
 from .planning import build_evidence_backed_plan
-from .sinks import chunks_to_turtle, index_chunks, upload_turtle_to_fuseki
+from .sinks import chunks_to_turtle, document_graph_uri, index_chunks, upload_turtle_to_fuseki
 
 
 def _service_config(cfg: dict) -> tuple[str, str, str, str]:
@@ -86,6 +88,9 @@ def _ingest_pdf(
         "pdf_path": str(pdf),
         "parser": converted["parser"],
         "parser_warning": converted.get("fallback_reason", ""),
+        "visual_formula_candidates": converted.get("visual_formula_candidates", []),
+        "visual_formula_candidates_count": len(converted.get("visual_formula_candidates", [])),
+        "docling_formulas_path": converted.get("formulas_path", ""),
     }
     paper_chunks = make_chunks(
         paper_id,
@@ -96,6 +101,8 @@ def _ingest_pdf(
         hard_max_chars=int(chunk_cfg["hard_max_chars"]),
         context_window=int(pdf_cfg["formula_context_window_chars"]),
     )
+    formula_image_root = Path(out.get("formula_image_dir", "data/formulas"))
+    paper_chunks = attach_formula_images(pdf, paper_chunks, formula_image_root)
     if not paper_chunks:
         raise VeritasFailure(
             stage="ingest.chunk_pdf",
@@ -139,17 +146,33 @@ def _write_outputs(chunks: list[dict], cfg: dict) -> None:
             remediation="Run `veritas ready`; inspect `docker compose logs opensearch`; verify OpenSearch 2.19+ and FAISS/HNSW index configuration.",
         ) from exc
 
-    ttl = chunks_to_turtle(chunks, cfg["project"]["namespace"], graph_uri)
-    (chunks_dir / "latest-ingest.ttl").write_text(ttl, encoding="utf-8")
-    print(f"[veritas] uploading RDF evidence graph to Fuseki graph={graph_uri}")
-    try:
-        upload_turtle_to_fuseki(graph_url, graph_uri, ttl, append=True)
-    except Exception as exc:  # noqa: BLE001 - convert to user-facing failure
-        raise VeritasFailure(
-            stage="ingest.upload_fuseki",
-            message=f"Fuseki graph upload failed: {exc}",
-            remediation="Run `veritas ready`; inspect `docker compose logs fuseki`; verify dataset and graph URL.",
-        ) from exc
+    latest_ttls: list[str] = []
+    chunks_by_paper: dict[str, list[dict]] = {}
+    for chunk in chunks:
+        chunks_by_paper.setdefault(str(chunk.get("paper_id", "unknown")), []).append(chunk)
+
+    upload_manifest: list[dict] = []
+    for paper_id, paper_chunks in chunks_by_paper.items():
+        metadata = paper_chunks[0].get("metadata", {}) if paper_chunks else {}
+        target_graph_uri = document_graph_uri(cfg, paper_id, metadata)
+        ttl = chunks_to_turtle(paper_chunks, cfg["project"]["namespace"], target_graph_uri)
+        safe_name = paper_id.replace("/", "_").replace(":", "_")
+        (chunks_dir / f"{safe_name}.ingest.ttl").write_text(ttl, encoding="utf-8")
+        latest_ttls.append(ttl)
+        print(f"[veritas] uploading RDF document evidence graph to Fuseki graph={target_graph_uri}")
+        try:
+            upload_turtle_to_fuseki(graph_url, target_graph_uri, ttl, append=True)
+        except Exception as exc:  # noqa: BLE001 - convert to user-facing failure
+            raise VeritasFailure(
+                stage="ingest.upload_fuseki",
+                message=f"Fuseki graph upload failed for graph {target_graph_uri}: {exc}",
+                remediation="Run `veritas ready`; inspect `docker compose logs fuseki`; verify dataset, graph URL, and Turtle syntax. Re-run ingestion; OpenSearch writes are idempotent by chunk_id.",
+                details={"paper_id": paper_id, "graph_uri": target_graph_uri},
+            ) from exc
+        upload_manifest.append({"paper_id": paper_id, "graph_uri": target_graph_uri, "chunks": len(paper_chunks)})
+
+    (chunks_dir / "latest-ingest.ttl").write_text("\n\n".join(latest_ttls), encoding="utf-8")
+    (chunks_dir / "latest-fuseki-upload-manifest.json").write_text(json.dumps(upload_manifest, indent=2), encoding="utf-8")
 
 
 def cmd_ingest_arxiv(args: argparse.Namespace) -> None:
@@ -225,6 +248,43 @@ def cmd_ingest_pdf(args: argparse.Namespace) -> None:
     print(json.dumps({"ok": True, "papers": 1, "chunks": len(chunks)}, indent=2))
 
 
+
+def cmd_review_formulas(args: argparse.Namespace) -> None:
+    """Review formula candidates in a chunks JSONL file.
+
+    Interactive mode is intentionally simple and terminal-safe: the user sees
+    LaTeX, description, image path, confidence, and source status, then chooses
+    approve/edit/reject/skip. Non-interactive mode is used for CI.
+    """
+
+    path = Path(args.chunks)
+    if args.decision:
+        result = review_formulas_noninteractive(path, args.decision, reviewer=args.reviewer, output=Path(args.output) if args.output else None)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+
+    from .human_review import apply_formula_decision, iter_formulas, load_chunks_jsonl, write_chunks_jsonl
+
+    chunks = load_chunks_jsonl(path)
+    reviewed = 0
+    for _chunk, formula in iter_formulas(chunks):
+        print("\nFormula Review")
+        print("──────────────")
+        print(f"id: {formula.get('formula_id','')}")
+        print(f"latex: {formula.get('latex','')}")
+        print(f"description: {formula.get('description','')}")
+        print(f"image: {formula.get('formula_image_path','') or '<none>'}")
+        print(f"source: {formula.get('source','')} confidence={formula.get('confidence','')}")
+        decision = input("Decision [approve/edit/reject/skip]: ").strip().lower() or "skip"
+        corrected = None
+        if decision == "edit":
+            corrected = input("Corrected LaTeX: ").strip()
+        apply_formula_decision(formula, decision, corrected_latex=corrected, reviewer=args.reviewer)
+        reviewed += 1
+    target = Path(args.output) if args.output else path
+    write_chunks_jsonl(target, chunks)
+    print(json.dumps({"ok": True, "formulas_reviewed": reviewed, "path": str(target)}, indent=2, ensure_ascii=False))
+
 def cmd_upload_ontology(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
     path = Path(args.path or cfg["ontology"].get("file", "/workspace/ontology/veritas.owl"))
@@ -285,6 +345,13 @@ def main() -> None:
     p_codegen.add_argument("--prompt", required=True)
     p_codegen.add_argument("--language", default="rust")
     p_codegen.set_defaults(func=cmd_generate_code)
+
+    p_review = sub.add_parser("review-formulas")
+    p_review.add_argument("--chunks", required=True)
+    p_review.add_argument("--decision", choices=["approve", "edit", "reject", "skip", "auto_approve"], required=False)
+    p_review.add_argument("--reviewer", default="human")
+    p_review.add_argument("--output", required=False)
+    p_review.set_defaults(func=cmd_review_formulas)
 
     args = parser.parse_args()
     try:

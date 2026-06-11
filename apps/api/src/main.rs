@@ -1,11 +1,16 @@
+mod providers;
+mod schemas;
+
 use axum::{
-    extract::State,
+    extract::{State, Path as AxumPath},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use reqwest::Client;
+use providers::{ModelRole, ProviderError, ProviderRouter};
+use schemas::{SchemaKey, schema_json, validate_required_object_fields};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -18,24 +23,19 @@ use std::{
 use tokio::{fs, process::Command, sync::Mutex, time::timeout};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-#[derive(Clone, Debug, Serialize)]
-struct ModelRole {
-    role: &'static str,
-    url: String,
-    model: String,
-    served_model_name: String,
-    temperature: f32,
-    top_p: f32,
-    max_tokens: u32,
-    timeout_secs: u64,
-}
-
 #[derive(Clone)]
 struct AppState {
     http: Client,
+    provider_router: ProviderRouter,
     opensearch_url: String,
     opensearch_index: String,
+    opensearch_base_index: String,
+    opensearch_read_alias: String,
+    opensearch_write_alias: String,
+    opensearch_versioned_index: String,
+    opensearch_mapping_version: String,
     opensearch_vector_field: String,
+    opensearch_vector_dimension: usize,
     fuseki_query_url: String,
     fuseki_ping_url: String,
     embedding_url: String,
@@ -49,6 +49,15 @@ struct AppState {
     remote_model_enabled: bool,
     remote_model_base_url: String,
     remote_model_name: String,
+    remote_model_api_key_env: String,
+    command_runner: String,
+    shacl_enforce: bool,
+    human_loop_policy: String,
+    fuseki_data_url: String,
+    graph_ontology_uri: String,
+    graph_document_base_uri: String,
+    graph_run_base_uri: String,
+    graph_validation_base_uri: String,
     runs_dir: PathBuf,
     command_timeout_secs: u64,
     max_retries: usize,
@@ -69,11 +78,31 @@ struct SearchRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct OpenSearchMigrateRequest {
+    dry_run: Option<bool>,
+    force_alias_update: Option<bool>,
+    version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphUploadRequest {
+    graph_uri: Option<String>,
+    turtle: String,
+    replace: Option<bool>,
+    content_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphDescribeRequest {
+    graph_uri: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct EmbedResponse {
     vectors: Vec<Vec<f32>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct RunRequest {
     goal: String,
     language: Option<String>,
@@ -87,6 +116,32 @@ struct Health {
     status: &'static str,
 }
 
+#[derive(Debug, Deserialize)]
+struct MathToCodeRequest {
+    formula_id: Option<String>,
+    formula_latex: Option<String>,
+    prompt: Option<String>,
+    language: Option<String>,
+    max_retries: Option<usize>,
+    human_approved: Option<bool>,
+    human_decision: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct HumanCheckpointRequest {
+    run_id: Option<String>,
+    phase: String,
+    decision: String,
+    artifact: Option<Value>,
+    reviewer: Option<String>,
+    notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RunPath {
+    run_id: String,
+}
+
 #[derive(Debug)]
 struct ApiFailure {
     status: StatusCode,
@@ -94,6 +149,55 @@ struct ApiFailure {
     message: String,
     remediation: String,
     details: Value,
+}
+
+
+#[derive(Debug)]
+struct RunLock {
+    path: PathBuf,
+    run_id: String,
+}
+
+impl Drop for RunLock {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_file(&self.path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(run_id = %self.run_id, lock = %self.path.display(), error = %error, "failed to remove run lock");
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct RunResumeRequest {
+    run_id: String,
+    goal: String,
+    language: Option<String>,
+    size: Option<u32>,
+    max_retries: Option<usize>,
+}
+
+impl From<RunRequest> for RunResumeRequest {
+    fn from(value: RunRequest) -> Self {
+        Self {
+            run_id: String::new(),
+            goal: value.goal,
+            language: value.language,
+            size: value.size,
+            max_retries: value.max_retries,
+        }
+    }
+}
+
+impl RunResumeRequest {
+    fn into_run_request(self) -> RunRequest {
+        RunRequest {
+            goal: self.goal,
+            language: self.language,
+            size: self.size,
+            max_retries: self.max_retries,
+        }
+    }
 }
 
 impl ApiFailure {
@@ -110,6 +214,22 @@ impl ApiFailure {
     fn with_details(mut self, details: Value) -> Self {
         self.details = details;
         self
+    }
+
+    fn from_provider_error(error: ProviderError) -> Self {
+        let status = match error.code.as_str() {
+            "model.timeout" => StatusCode::GATEWAY_TIMEOUT,
+            "remote.disabled" => StatusCode::SERVICE_UNAVAILABLE,
+            _ => StatusCode::BAD_GATEWAY,
+        };
+        ApiFailure::new(status, &error.code, error.message.clone(), error.remediation.clone())
+            .with_details(json!({
+                "provider": error.provider,
+                "role": error.role,
+                "category": error.category,
+                "retryable": error.retryable,
+                "details": error.details
+            }))
     }
 
     fn response(self) -> (StatusCode, Json<Value>) {
@@ -134,14 +254,38 @@ async fn main() -> anyhow::Result<()> {
     let port: u16 = env::var("VERITAS_API_PORT")
         .unwrap_or_else(|_| "8080".into())
         .parse()?;
+    let http = Client::new();
+    let remote_enabled = bool_env("VERITAS_REMOTE_MODEL_ENABLED", false);
+    let remote_base_url = env::var("VERITAS_REMOTE_MODEL_BASE_URL").unwrap_or_default();
+    let remote_model_name = env::var("VERITAS_REMOTE_MODEL_NAME").unwrap_or_default();
+    let remote_api_key_env = env::var("VERITAS_REMOTE_MODEL_API_KEY_ENV").unwrap_or_else(|_| "VERITAS_REMOTE_MODEL_API_KEY".into());
+    let provider_router = ProviderRouter::new(http.clone(), remote_enabled, remote_base_url.clone(), remote_model_name.clone(), remote_api_key_env.clone());
+    let opensearch_base_index = env::var("VERITAS_OPENSEARCH_INDEX_BASE")
+        .or_else(|_| env::var("VERITAS_OPENSEARCH_INDEX"))
+        .unwrap_or_else(|_| "veritas-papers".into());
+    let opensearch_mapping_version = env::var("VERITAS_OPENSEARCH_MAPPING_VERSION").unwrap_or_else(|_| "v1".into());
+    let opensearch_versioned_index = env::var("VERITAS_OPENSEARCH_VERSIONED_INDEX")
+        .unwrap_or_else(|_| format!("{}-{}", opensearch_base_index, opensearch_mapping_version));
+    let opensearch_read_alias = env::var("VERITAS_OPENSEARCH_READ_ALIAS")
+        .unwrap_or_else(|_| format!("{}-read", opensearch_base_index));
+    let opensearch_write_alias = env::var("VERITAS_OPENSEARCH_WRITE_ALIAS")
+        .unwrap_or_else(|_| format!("{}-write", opensearch_base_index));
+    let opensearch_search_index = env::var("VERITAS_OPENSEARCH_INDEX")
+        .unwrap_or_else(|_| opensearch_read_alias.clone());
     let state = Arc::new(AppState {
-        http: Client::new(),
+        http: http.clone(),
+        provider_router,
         opensearch_url: env::var("VERITAS_OPENSEARCH_URL")
             .unwrap_or_else(|_| "http://opensearch:9200".into()),
-        opensearch_index: env::var("VERITAS_OPENSEARCH_INDEX")
-            .unwrap_or_else(|_| "veritas-papers".into()),
+        opensearch_index: opensearch_search_index,
+        opensearch_base_index,
+        opensearch_read_alias,
+        opensearch_write_alias,
+        opensearch_versioned_index,
+        opensearch_mapping_version,
         opensearch_vector_field: env::var("VERITAS_OPENSEARCH_VECTOR_FIELD")
             .unwrap_or_else(|_| "embedding".into()),
+        opensearch_vector_dimension: uint_env("VERITAS_OPENSEARCH_VECTOR_DIMENSION", 768) as usize,
         fuseki_query_url: env::var("VERITAS_FUSEKI_QUERY_URL")
             .unwrap_or_else(|_| "http://fuseki:3030/veritas/sparql".into()),
         fuseki_ping_url: env::var("VERITAS_FUSEKI_PING_URL")
@@ -158,9 +302,18 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct".into()),
         math_large_model: env::var("VERITAS_MATH_LARGE_MODEL")
             .unwrap_or_else(|_| "allenai/Olmo-3.1-32B-Instruct".into()),
-        remote_model_enabled: bool_env("VERITAS_REMOTE_MODEL_ENABLED", false),
-        remote_model_base_url: env::var("VERITAS_REMOTE_MODEL_BASE_URL").unwrap_or_default(),
-        remote_model_name: env::var("VERITAS_REMOTE_MODEL_NAME").unwrap_or_default(),
+        remote_model_enabled: remote_enabled,
+        remote_model_base_url: remote_base_url,
+        remote_model_name,
+        remote_model_api_key_env: remote_api_key_env,
+        command_runner: env::var("VERITAS_COMMAND_RUNNER").unwrap_or_else(|_| "local".into()),
+        shacl_enforce: bool_env("VERITAS_SHACL_ENFORCE", false),
+        human_loop_policy: env::var("VERITAS_HUMAN_LOOP_POLICY").unwrap_or_else(|_| "require_high_risk_only".into()),
+        fuseki_data_url: env::var("VERITAS_FUSEKI_DATA_URL").unwrap_or_else(|_| "http://fuseki:3030/veritas/data".into()),
+        graph_ontology_uri: env::var("VERITAS_GRAPH_ONTOLOGY_URI").unwrap_or_else(|_| "urn:veritas:graph:ontology".into()),
+        graph_document_base_uri: env::var("VERITAS_GRAPH_DOCUMENT_BASE_URI").unwrap_or_else(|_| "urn:veritas:graph:document".into()),
+        graph_run_base_uri: env::var("VERITAS_GRAPH_RUN_BASE_URI").unwrap_or_else(|_| "urn:veritas:graph:run".into()),
+        graph_validation_base_uri: env::var("VERITAS_GRAPH_VALIDATION_BASE_URI").unwrap_or_else(|_| "urn:veritas:graph:validation".into()),
         runs_dir: PathBuf::from(env::var("VERITAS_RUNS_DIR").unwrap_or_else(|_| "/workspace/data/runs".into())),
         command_timeout_secs: uint_env("VERITAS_COMMAND_TIMEOUT_SECS", 180),
         max_retries: uint_env("VERITAS_AGENT_MAX_RETRIES", 2) as usize,
@@ -171,9 +324,21 @@ async fn main() -> anyhow::Result<()> {
         .route("/ready", get(ready))
         .route("/models", get(models))
         .route("/status", get(status))
+        .route("/status/:run_id", get(status_by_run_id))
+        .route("/run/:run_id/resume", post(resume_run))
+        .route("/run/:run_id/cancel", post(cancel_run))
         .route("/graph/status", get(graph_status))
+        .route("/graphs", get(graphs))
+        .route("/graph/describe", post(graph_describe))
+        .route("/graph/upload", post(graph_upload))
+        .route("/graph/facts", get(graph_facts))
         .route("/sparql", post(sparql))
         .route("/search", post(search))
+        .route("/opensearch/status", get(opensearch_status))
+        .route("/opensearch/mapping", get(opensearch_mapping))
+        .route("/opensearch/migrate", post(opensearch_migrate))
+        .route("/math-to-code", post(math_to_code))
+        .route("/human/checkpoint", post(human_checkpoint))
         .route("/plan", post(plan))
         .route("/run", post(run_agent))
         .route("/llm/chat", post(llm_chat))
@@ -284,7 +449,10 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "cosine_search": "OpenSearch FAISS/HNSW"
             },
             "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet", "shacl": state.shacl_url},
-            "remote_fallback": {"enabled": state.remote_model_enabled, "base_url": state.remote_model_base_url, "model": state.remote_model_name}
+            "provider_router": state.provider_router.summary(),
+            "remote_fallback": {"enabled": state.remote_model_enabled, "base_url": state.remote_model_base_url, "model": state.remote_model_name, "api_key_env": state.remote_model_api_key_env},
+            "execution": {"command_runner": state.command_runner, "sandbox_default": state.command_runner == "docker" || state.command_runner == "sandbox"},
+            "shacl": {"url": state.shacl_url, "enforce": state.shacl_enforce}
         })),
     )
 }
@@ -303,16 +471,122 @@ fn role_json(role: &ModelRole) -> Value {
 }
 
 async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let runs = state.recent_runs.lock().await.clone();
+    let persisted_runs = list_persisted_runs(&state.runs_dir).await.unwrap_or_else(|error| json!({"error": error.to_string()}));
+    let memory_runs = state.recent_runs.lock().await.clone();
     (
         StatusCode::OK,
         Json(json!({
             "ok": true,
             "runs_dir": state.runs_dir.display().to_string(),
-            "recent_runs": runs,
-            "message": "Run state is kept in memory for quick status and persisted in each run workspace as final_report.json."
+            "persistent_runs": persisted_runs,
+            "recent_runs": memory_runs,
+            "message": "Run state is persisted in each run workspace with request.json, state.json, events.jsonl, artifacts, and final_report.json."
         })),
     )
+}
+
+
+async fn status_by_run_id(State(state): State<Arc<AppState>>, AxumPath(path): AxumPath<RunPath>) -> impl IntoResponse {
+    let workspace = state.runs_dir.join(&path.run_id);
+    if !workspace.exists() {
+        return ApiFailure::new(StatusCode::NOT_FOUND, "run.not_found", format!("Run {} was not found in {}", path.run_id, state.runs_dir.display()), "Check `veritas run list` or verify the configured VERITAS_RUNS_DIR.").response();
+    }
+    let state_json = read_json_file(&workspace.join("state.json")).await.unwrap_or_else(|| json!({"missing": true}));
+    let final_report = read_json_file(&workspace.join("final_report.json")).await;
+    let request = read_json_file(&workspace.join("request.json")).await;
+    let events = read_events_tail(&workspace.join("events.jsonl"), 50).await.unwrap_or_else(|_| Vec::new());
+    let cancelled = workspace.join("CANCELLED").exists();
+    let locked = workspace.join("run.lock").exists();
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "run_id": path.run_id,
+        "workspace": workspace.display().to_string(),
+        "cancelled": cancelled,
+        "locked": locked,
+        "request": request,
+        "state": state_json,
+        "events_tail": events,
+        "final_report": final_report
+    })))
+}
+
+async fn resume_run(State(state): State<Arc<AppState>>, AxumPath(path): AxumPath<RunPath>) -> impl IntoResponse {
+    let workspace = state.runs_dir.join(&path.run_id);
+    if !workspace.exists() {
+        return ApiFailure::new(StatusCode::NOT_FOUND, "run.resume.not_found", format!("Run {} was not found.", path.run_id), "Only persisted run workspaces can be resumed. Start a new run or verify VERITAS_RUNS_DIR.").response();
+    }
+    if workspace.join("CANCELLED").exists() {
+        return ApiFailure::new(StatusCode::CONFLICT, "run.resume.cancelled", format!("Run {} is cancelled.", path.run_id), "Remove the cancellation marker only if you intentionally want to restart this run, or start a new run.").response();
+    }
+    if workspace.join("final_report.json").exists() {
+        let final_report = read_json_file(&workspace.join("final_report.json")).await.unwrap_or_else(|| json!({}));
+        return (StatusCode::OK, Json(json!({"ok": true, "run_id": path.run_id, "status": "already_final", "final_report": final_report})));
+    }
+    match resume_autonomous_run(&state, &path.run_id, workspace).await {
+        Ok(report) => (StatusCode::OK, Json(report)),
+        Err(error) => error.response(),
+    }
+}
+
+async fn cancel_run(State(state): State<Arc<AppState>>, AxumPath(path): AxumPath<RunPath>) -> impl IntoResponse {
+    let workspace = state.runs_dir.join(&path.run_id);
+    if !workspace.exists() {
+        return ApiFailure::new(StatusCode::NOT_FOUND, "run.cancel.not_found", format!("Run {} was not found.", path.run_id), "Verify the run id and configured runs directory.").response();
+    }
+    let cancel_file = workspace.join("CANCELLED");
+    match fs::write(&cancel_file, format!("cancelled_at_ms={}\n", now_millis())).await {
+        Ok(_) => {
+            let _ = persist_run_state(&workspace, "CancelRequested", json!({"run_id": path.run_id, "cancel_file": cancel_file.display().to_string()})).await;
+            (StatusCode::OK, Json(json!({"ok": true, "run_id": path.run_id, "status": "cancel_requested", "cancel_file": cancel_file.display().to_string()})))
+        }
+        Err(error) => ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.cancel.write_failed", format!("Could not write cancellation marker: {error}"), "Check run workspace permissions.").response(),
+    }
+}
+
+async fn read_json_file(path: &Path) -> Option<Value> {
+    let text = fs::read_to_string(path).await.ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+async fn read_events_tail(path: &Path, limit: usize) -> Result<Vec<Value>, std::io::Error> {
+    let text = match fs::read_to_string(path).await {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut events: Vec<Value> = text.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).collect();
+    if events.len() > limit {
+        events = events.split_off(events.len() - limit);
+    }
+    Ok(events)
+}
+
+async fn list_persisted_runs(runs_dir: &Path) -> Result<Value, std::io::Error> {
+    let mut entries = Vec::new();
+    let mut read_dir = match fs::read_dir(runs_dir).await {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(json!([])),
+        Err(error) => return Err(error),
+    };
+    while let Some(entry) = read_dir.next_entry().await? {
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        let run_id = entry.file_name().to_string_lossy().to_string();
+        let state_json = read_json_file(&path.join("state.json")).await.unwrap_or_else(|| json!({"missing": true}));
+        let final_report = read_json_file(&path.join("final_report.json")).await;
+        entries.push(json!({
+            "run_id": run_id,
+            "workspace": path.display().to_string(),
+            "state": state_json.get("state").cloned().unwrap_or_else(|| json!("unknown")),
+            "sequence": state_json.get("sequence").cloned().unwrap_or_else(|| json!(null)),
+            "cancelled": path.join("CANCELLED").exists(),
+            "locked": path.join("run.lock").exists(),
+            "final_status": final_report.as_ref().and_then(|v| v.get("final_status")).cloned().unwrap_or_else(|| json!(null)),
+            "has_final_report": final_report.is_some()
+        }));
+    }
+    entries.sort_by(|a, b| b.get("run_id").and_then(Value::as_str).cmp(&a.get("run_id").and_then(Value::as_str)));
+    Ok(json!(entries))
 }
 
 async fn graph_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -455,22 +729,458 @@ fn extract_goal(input: &Value) -> Result<String, ApiFailure> {
         .ok_or_else(|| ApiFailure::new(StatusCode::BAD_REQUEST, "plan.validation", "Request is missing a non-empty `goal` or `prompt`.", "Ask Veritas what you want built, analyzed, or converted from research into code."))
 }
 
+
+
+async fn opensearch_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let versioned = probe_opensearch_head(&state, &state.opensearch_versioned_index).await;
+    let read_alias = probe_opensearch_head(&state, &state.opensearch_read_alias).await;
+    let write_alias = probe_opensearch_head(&state, &state.opensearch_write_alias).await;
+    let legacy_index = probe_opensearch_head(&state, &state.opensearch_base_index).await;
+    let aliases = fetch_opensearch_aliases(&state).await.unwrap_or_else(|error| json!({"ok": false, "error": error.message, "remediation": error.remediation}));
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "base_index": state.opensearch_base_index,
+        "versioned_index": state.opensearch_versioned_index,
+        "mapping_version": state.opensearch_mapping_version,
+        "read_alias": state.opensearch_read_alias,
+        "write_alias": state.opensearch_write_alias,
+        "active_search_target": state.opensearch_index,
+        "vector_field": state.opensearch_vector_field,
+        "vector_dimension": state.opensearch_vector_dimension,
+        "checks": {"versioned_index": versioned, "read_alias": read_alias, "write_alias": write_alias, "legacy_index": legacy_index},
+        "aliases": aliases,
+        "business_outcome": "OpenSearch is treated as a versioned FAISS/HNSW evidence memory with stable read/write aliases so schema migrations do not corrupt retrieval."
+    })))
+}
+
+async fn opensearch_mapping(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "base_index": state.opensearch_base_index,
+        "versioned_index": state.opensearch_versioned_index,
+        "read_alias": state.opensearch_read_alias,
+        "write_alias": state.opensearch_write_alias,
+        "mapping_version": state.opensearch_mapping_version,
+        "mapping": production_opensearch_mapping(&state.opensearch_vector_field, state.opensearch_vector_dimension, &state.opensearch_mapping_version)
+    })))
+}
+
+async fn opensearch_migrate(State(state): State<Arc<AppState>>, request: Option<Json<OpenSearchMigrateRequest>>) -> impl IntoResponse {
+    let req = request.map(|Json(v)| v).unwrap_or(OpenSearchMigrateRequest { dry_run: None, force_alias_update: None, version: None });
+    let version = req.version.as_deref().unwrap_or(&state.opensearch_mapping_version);
+    let target_index = if version == state.opensearch_mapping_version {
+        state.opensearch_versioned_index.clone()
+    } else {
+        format!("{}-{}", state.opensearch_base_index, version)
+    };
+    let mapping = production_opensearch_mapping(&state.opensearch_vector_field, state.opensearch_vector_dimension, version);
+    let force_alias_update = req.force_alias_update.unwrap_or(true);
+    let migration_plan = json!({
+        "target_index": target_index,
+        "base_index": state.opensearch_base_index,
+        "read_alias": state.opensearch_read_alias,
+        "write_alias": state.opensearch_write_alias,
+        "mapping_version": version,
+        "force_alias_update": force_alias_update,
+        "vector_field": state.opensearch_vector_field,
+        "vector_dimension": state.opensearch_vector_dimension,
+        "actions": [
+            "create versioned index if absent",
+            "attach read alias to versioned index",
+            "attach write alias to versioned index with is_write_index=true",
+            "preserve existing indices; do not delete data during migration"
+        ]
+    });
+    if req.dry_run.unwrap_or(false) {
+        return (StatusCode::OK, Json(json!({"ok": true, "dry_run": true, "plan": migration_plan, "mapping": mapping})));
+    }
+
+    let target_url = format!("{}/{}", state.opensearch_url.trim_end_matches('/'), target_index);
+    let exists = match state.http.head(&target_url).send().await {
+        Ok(response) => response.status().is_success(),
+        Err(error) => return ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.migrate.transport", format!("OpenSearch HEAD failed: {error}"), "Start OpenSearch and check VERITAS_OPENSEARCH_URL.").response(),
+    };
+    let mut steps = Vec::new();
+    if !exists {
+        let response = match state.http.put(&target_url).json(&mapping).send().await {
+            Ok(response) => response,
+            Err(error) => return ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.migrate.put_failed", format!("OpenSearch PUT failed: {error}"), "Check OpenSearch health and mapping JSON.").response(),
+        };
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
+        if !status.is_success() {
+            return ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.migrate.upstream", format!("OpenSearch returned HTTP {} while creating index", status.as_u16()), "Inspect OpenSearch logs and the generated mapping.").with_details(body).response();
+        }
+        steps.push(json!({"stage": "create_index", "index": target_index, "response": body}));
+    } else {
+        steps.push(json!({"stage": "create_index", "index": target_index, "status": "already_exists"}));
+    }
+
+    let alias_actions = build_alias_actions(&state, &target_index, force_alias_update).await;
+    if !alias_actions.is_empty() {
+        let alias_url = format!("{}/_aliases", state.opensearch_url.trim_end_matches('/'));
+        let response = match state.http.post(&alias_url).json(&json!({"actions": alias_actions})).send().await {
+            Ok(response) => response,
+            Err(error) => return ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.alias.transport", format!("OpenSearch alias update failed before response: {error}"), "Check OpenSearch health and alias settings.").response(),
+        };
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
+        if !status.is_success() {
+            return ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.alias.upstream", format!("OpenSearch returned HTTP {} while updating aliases", status.as_u16()), "Inspect alias conflicts and rerun with a clean versioned index.").with_details(body).response();
+        }
+        steps.push(json!({"stage": "alias_update", "response": body}));
+    }
+
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "status": "migrated",
+        "plan": migration_plan,
+        "steps": steps,
+        "message": "OpenSearch FAISS/HNSW mapping is versioned and attached to stable read/write aliases."
+    })))
+}
+
+
+async fn probe_opensearch_head(state: &AppState, target: &str) -> Value {
+    let url = format!("{}/{}", state.opensearch_url.trim_end_matches('/'), target);
+    match state.http.head(&url).send().await {
+        Ok(response) => json!({"target": target, "ok": response.status().is_success(), "http_status": response.status().as_u16()}),
+        Err(error) => json!({"target": target, "ok": false, "error": error.to_string()})
+    }
+}
+
+async fn fetch_opensearch_aliases(state: &AppState) -> Result<Value, ApiFailure> {
+    let url = format!("{}/_aliases", state.opensearch_url.trim_end_matches('/'));
+    let response = state.http.get(&url).send().await
+        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.aliases.transport", format!("OpenSearch alias lookup failed: {error}"), "Start OpenSearch and check the configured URL."))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
+    if !status.is_success() {
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "opensearch.aliases.upstream", format!("OpenSearch returned HTTP {} while listing aliases", status.as_u16()), "Inspect OpenSearch logs.").with_details(body));
+    }
+    Ok(body)
+}
+
+async fn build_alias_actions(state: &AppState, target_index: &str, force_alias_update: bool) -> Vec<Value> {
+    let mut actions = Vec::new();
+    if force_alias_update {
+        if let Ok(aliases) = fetch_opensearch_aliases(state).await {
+            if let Some(indices) = aliases.as_object() {
+                for (index_name, index_body) in indices {
+                    let alias_map = index_body.get("aliases").and_then(Value::as_object);
+                    if let Some(alias_map) = alias_map {
+                        for alias in [&state.opensearch_read_alias, &state.opensearch_write_alias] {
+                            if alias_map.contains_key(alias) {
+                                actions.push(json!({"remove": {"index": index_name, "alias": alias}}));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    actions.push(json!({"add": {"index": target_index, "alias": state.opensearch_read_alias}}));
+    actions.push(json!({"add": {"index": target_index, "alias": state.opensearch_write_alias, "is_write_index": true}}));
+    actions
+}
+
+async fn graphs(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let query = "SELECT DISTINCT ?graph WHERE { GRAPH ?graph { ?s ?p ?o } } ORDER BY ?graph LIMIT 500";
+    let result = run_sparql(&state, query).await.unwrap_or_else(|error| json!({"ok": false, "error": {"code": error.code, "message": error.message, "remediation": error.remediation}}));
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "configured_graphs": {
+            "ontology": state.graph_ontology_uri,
+            "document_base": state.graph_document_base_uri,
+            "run_base": state.graph_run_base_uri,
+            "validation_base": state.graph_validation_base_uri
+        },
+        "named_graph_query": result,
+        "note": "Fuseki stores ontology TBox facts plus project ABox facts. PDF binaries remain in file/object storage; RDF stores semantic links."
+    })))
+}
+
+async fn graph_describe(State(state): State<Arc<AppState>>, Json(req): Json<GraphDescribeRequest>) -> impl IntoResponse {
+    if req.graph_uri.trim().is_empty() {
+        return ApiFailure::new(StatusCode::BAD_REQUEST, "graph.describe.validation", "graph_uri is required.", "Pass the named graph URI to inspect.").response();
+    }
+    let query = format!("SELECT (COUNT(*) AS ?triples) WHERE {{ GRAPH <{}> {{ ?s ?p ?o }} }}", req.graph_uri);
+    match run_sparql(&state, &query).await {
+        Ok(value) => (StatusCode::OK, Json(json!({"ok": true, "graph_uri": req.graph_uri, "result": value}))),
+        Err(error) => error.response(),
+    }
+}
+
+async fn graph_upload(State(state): State<Arc<AppState>>, Json(req): Json<GraphUploadRequest>) -> impl IntoResponse {
+    let graph_uri = req.graph_uri.unwrap_or_else(|| state.graph_ontology_uri.clone());
+    if graph_uri.trim().is_empty() || req.turtle.trim().is_empty() {
+        return ApiFailure::new(StatusCode::BAD_REQUEST, "graph.upload.validation", "graph_uri and non-empty turtle are required.", "Provide Turtle RDF and a named graph URI.").response();
+    }
+    match upload_turtle_to_fuseki(state.as_ref(), &graph_uri, &req.turtle, req.replace.unwrap_or(false), req.content_type.as_deref().unwrap_or("text/turtle")).await {
+        Ok(value) => (StatusCode::OK, Json(json!({"ok": true, "graph_uri": graph_uri, "upload": value}))),
+        Err(error) => error.response(),
+    }
+}
+
+async fn graph_facts(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let facts = planner_fact_summary(&state).await;
+    (StatusCode::OK, Json(json!({"ok": true, "planner_fact_summary": facts})))
+}
+
+async fn upload_turtle_to_fuseki(state: &AppState, graph_uri: &str, turtle: &str, replace: bool, content_type: &str) -> Result<Value, ApiFailure> {
+    let method = if replace { "PUT" } else { "POST" };
+    let request = if replace { state.http.put(&state.fuseki_data_url) } else { state.http.post(&state.fuseki_data_url) };
+    let response = request
+        .query(&[("graph", graph_uri)])
+        .header("content-type", content_type)
+        .body(turtle.to_string())
+        .send()
+        .await
+        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "fuseki.upload.transport", format!("Fuseki graph upload failed before response: {error}"), "Start Fuseki and check VERITAS_FUSEKI_DATA_URL."))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "fuseki.upload.upstream", format!("Fuseki returned HTTP {} while uploading graph", status.as_u16()), "Verify dataset, graph-store endpoint, content type, and RDF syntax.").with_details(body));
+    }
+    Ok(json!({"method": method, "graph_uri": graph_uri, "http_status": status.as_u16()}))
+}
+
+async fn planner_fact_summary(state: &AppState) -> Value {
+    let mut summaries = serde_json::Map::new();
+    let mut warnings = Vec::new();
+    for (name, query) in query_pack() {
+        match run_sparql(state, query).await {
+            Ok(value) => {
+                let bindings = value.pointer("/results/bindings").and_then(Value::as_array).cloned().unwrap_or_default();
+                let samples: Vec<Value> = bindings.iter().take(5).map(flatten_sparql_binding).collect();
+                summaries.insert(name.to_string(), json!({"ok": true, "count": bindings.len(), "samples": samples}));
+            }
+            Err(error) => {
+                warnings.push(json!({"query": name, "code": error.code, "message": error.message, "remediation": error.remediation}));
+                summaries.insert(name.to_string(), json!({"ok": false, "count": 0}));
+            }
+        }
+    }
+    json!({"queries": summaries, "warnings": warnings})
+}
+
+fn query_pack() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("formula_traceability", include_str!("../../../packages/ontology/queries/formula_traceability.sparql")),
+        ("evidence_chunks", include_str!("../../../packages/ontology/queries/evidence_chunks.sparql")),
+        ("formulas_without_invariants", include_str!("../../../packages/ontology/queries/formulas_without_invariants.sparql")),
+        ("risks_without_mitigation", include_str!("../../../packages/ontology/queries/risks_without_mitigation.sparql")),
+        ("plans_without_validation", include_str!("../../../packages/ontology/queries/plans_without_validation.sparql")),
+        ("unvalidated_code_artifacts", include_str!("../../../packages/ontology/queries/unvalidated_code_artifacts.sparql")),
+        ("builds_without_tests", include_str!("../../../packages/ontology/queries/builds_without_tests.sparql")),
+        ("loops_without_termination", include_str!("../../../packages/ontology/queries/loops_without_termination.sparql")),
+        ("objectives_blocked_by_assumptions", include_str!("../../../packages/ontology/queries/objectives_blocked_by_assumptions.sparql")),
+        ("deployment_units_without_observability", include_str!("../../../packages/ontology/queries/deployment_units_without_observability.sparql")),
+        ("math_claims_without_transfer_tests", include_str!("../../../packages/ontology/queries/math_claims_without_transfer_tests.sparql")),
+    ]
+}
+
+fn flatten_sparql_binding(binding: &Value) -> Value {
+    let mut flat = serde_json::Map::new();
+    if let Some(obj) = binding.as_object() {
+        for (key, value) in obj {
+            flat.insert(key.clone(), value.get("value").cloned().unwrap_or_else(|| value.clone()));
+        }
+    }
+    Value::Object(flat)
+}
+
+async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathToCodeRequest>) -> impl IntoResponse {
+    let language = req.language.clone().unwrap_or_else(|| "rust".to_string());
+    let formula_context = json!({
+        "formula_id": req.formula_id,
+        "formula_latex": req.formula_latex,
+        "prompt": req.prompt,
+        "required_method": "surface phenomenon -> representation map -> latent ontology -> transformation space -> invariant -> compression fidelity -> recursive closure -> generative necessity -> symbolic shadow -> transfer -> validation -> code"
+    });
+    let math_prompt = build_math_to_code_reasoning_prompt(&formula_context, &language);
+    let math_reasoning = match call_chat_model_json(&state, &state.math_model, SchemaKey::MathReasoning, math_to_code_system_prompt(), &math_prompt).await {
+        Ok(value) => value,
+        Err(error) => return error.response(),
+    };
+    let checkpoint = math_human_checkpoint(&state, &math_reasoning, &formula_context, req.human_approved.unwrap_or(false), req.human_decision.clone());
+    if checkpoint.get("required").and_then(Value::as_bool).unwrap_or(false) && !checkpoint.get("approved").and_then(Value::as_bool).unwrap_or(false) {
+        return (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "ok": false,
+                "status": "awaiting_human_checkpoint",
+                "message": "Veritas completed representation-first math analysis and needs human approval before code generation.",
+                "checkpoint": checkpoint,
+                "math_reasoning": math_reasoning,
+                "next_action": "Review the symbolic shadow, representation map, invariants, risks, and validation requirements, then resubmit /math-to-code with human_approved=true or use `veritas math-to-code` interactive mode."
+            })),
+        );
+    }
+    let goal = format!(
+        "Math-to-code task. Treat the formula/problem as a symbolic shadow, not truth. Use this approved representation-first math analysis to generate tested {language} code. Formula context: {}. Math reasoning JSON: {}. Human checkpoint: {}",
+        formula_context,
+        math_reasoning,
+        checkpoint,
+    );
+    let run_req = RunRequest { goal, language: Some(language), size: Some(8), max_retries: req.max_retries };
+    match execute_autonomous_run(&state, run_req).await {
+        Ok(mut report) => {
+            report["kind"] = json!("VeritasMathToCodeRunReport");
+            report["math_reasoning"] = math_reasoning;
+            report["human_checkpoint"] = checkpoint;
+            (StatusCode::OK, Json(report))
+        }
+        Err(error) => error.response(),
+    }
+}
+
+fn math_to_code_system_prompt() -> &'static str {
+    "You are Veritas Mathematical Researcher. Return valid JSON only. Follow MATH.md exactly: do not treat equations as truth; treat formulas as symbolic shadows of deeper transformational structure. Analyze surface phenomenon, representation hypothesis, representation map, primitive ontology, transformations, constraints, invariants, compression fidelity, recursion, generative necessity, symbolic shadows, transfer, risks, and validation requirements. Do not expose private chain-of-thought; provide concise auditable reasoning summaries."
+}
+
+fn build_math_to_code_reasoning_prompt(formula_context: &Value, language: &str) -> String {
+    json!({
+        "task": "representation_first_math_to_code_analysis",
+        "language": language,
+        "formula_context": formula_context,
+        "required_json_schema": schema_description_for(SchemaKey::MathReasoning),
+        "math_discipline": {
+            "central_warning": "surface form != deep structure",
+            "formula_role": "SymbolicShadow",
+            "default_path": ["surface_phenomenon", "representation_search", "latent_ontology", "transformation_space", "constraint_geometry", "invariants", "compression_fidelity", "recursive_closure", "generative_necessity", "symbolic_shadows", "transfer_tests", "validation_requirements"],
+            "epistemic_gates": ["observation_not_truth", "equation_not_origin", "pattern_not_invariant", "simulation_not_truth", "prediction_not_understanding", "compression_not_truth", "training_fit_not_transfer"]
+        },
+        "hard_requirements": [
+            "Return JSON only.",
+            "Include Axiom Map A0-A15 references where relevant.",
+            "Every invariant must specify its transformation family.",
+            "Every symbolic shadow must state generative origin, scope, and failure conditions.",
+            "Every implementation note must produce validation requirements."
+        ]
+    }).to_string()
+}
+
+fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_context: &Value, human_approved: bool, human_decision: Option<Value>) -> Value {
+    let policy = state.human_loop_policy.as_str();
+    let high_risk = math_reasoning.get("risks").and_then(Value::as_array).map(|items| items.iter().any(|risk| {
+        let text = risk.to_string().to_ascii_lowercase();
+        text.contains("high") || text.contains("critical") || text.contains("under-specified") || text.contains("unspecified") || text.contains("unproved")
+    })).unwrap_or(true);
+    let required = match policy {
+        "auto_approve" => false,
+        "require_all" => true,
+        "require_high_risk_only" => high_risk,
+        _ => high_risk,
+    };
+    json!({
+        "phase": "math_to_code_representation_review",
+        "policy": policy,
+        "required": required,
+        "approved": human_approved || !required,
+        "decision": human_decision.unwrap_or_else(|| if human_approved { json!({"decision":"approve", "reviewer":"human"}) } else if required { json!({"decision":"pending"}) } else { json!({"decision":"auto_approve", "reason":"policy_allows_non_high_risk_auto_approval"}) }),
+        "question": "Do you approve this formula as a symbolic shadow with the stated representation map, invariants, risks, and validation requirements for code generation?",
+        "artifact": {"formula_context": formula_context, "math_reasoning": math_reasoning},
+        "options": ["approve", "edit", "reject", "ask_for_explanation"],
+        "status": if human_approved || !required { "approved_or_auto_approved" } else { "pending_human_review" }
+    })
+}
+
+
+
+async fn human_checkpoint(State(state): State<Arc<AppState>>, Json(req): Json<HumanCheckpointRequest>) -> impl IntoResponse {
+    let decision = req.decision.trim().to_ascii_lowercase();
+    if !["approve", "edit", "reject", "skip", "auto_approve", "ask_for_explanation"].contains(&decision.as_str()) {
+        return ApiFailure::new(StatusCode::BAD_REQUEST, "human_checkpoint.invalid_decision", format!("Unsupported decision: {}", req.decision), "Use approve, edit, reject, skip, auto_approve, or ask_for_explanation.").response();
+    }
+    let run_id = req.run_id.clone().unwrap_or_else(|| format!("ad_hoc-{}", now_millis()));
+    let workspace = state.runs_dir.join(&run_id);
+    if let Err(error) = fs::create_dir_all(&workspace).await {
+        return ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "human_checkpoint.workspace", format!("Could not create checkpoint workspace: {error}"), "Check VERITAS_RUNS_DIR permissions.").response();
+    }
+    let checkpoint = json!({
+        "run_id": run_id,
+        "phase": req.phase,
+        "decision": decision,
+        "reviewer": req.reviewer.unwrap_or_else(|| "human".to_string()),
+        "notes": req.notes.unwrap_or_default(),
+        "artifact": req.artifact.unwrap_or_else(|| json!({})),
+        "timestamp_ms": now_millis(),
+        "status": "recorded"
+    });
+    if let Err(error) = append_jsonl(&workspace.join("human_checkpoints.jsonl"), &checkpoint).await {
+        return ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "human_checkpoint.persist", format!("Could not persist checkpoint: {error}"), "Check run workspace permissions.").response();
+    }
+    let _ = persist_run_state(&workspace, "HumanCheckpointRecorded", checkpoint.clone()).await;
+    (StatusCode::OK, Json(json!({"ok": true, "checkpoint": checkpoint, "workspace": workspace.display().to_string()})))
+}
+
+fn production_opensearch_mapping(vector_field: &str, dimension: usize, version: &str) -> Value {
+    json!({
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0, "knn": true, "knn.algo_param.ef_search": 100}},
+        "mappings": {"_meta": {"schema": "veritas_evidence", "version": version, "vector_field": vector_field, "vector_dimension": dimension, "owner": "veritas-rust-api"}, "properties": {
+            "doc_id": {"type": "keyword"},
+            "paper_id": {"type": "keyword"},
+            "chunk_id": {"type": "keyword"},
+            "formula_id": {"type": "keyword"},
+            "run_id": {"type": "keyword"},
+            "source_type": {"type": "keyword"},
+            "status": {"type": "keyword"},
+            "sha256": {"type": "keyword"},
+            "title": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 512}}},
+            "abstract": {"type": "text"},
+            "apa_citation": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 1024}}},
+            "text": {"type": "text"},
+            "chunk_text": {"type": "text"},
+            "formula_description": {"type": "text"},
+            "technical_summary": {"type": "text"},
+            "embedding_model": {"type": "keyword"},
+            "embedding_norm": {"type": "float"},
+            vector_field: {"type": "knn_vector", "dimension": dimension, "space_type": "cosinesimil", "method": {"name": "hnsw", "engine": "faiss", "parameters": {"ef_construction": 128, "m": 24}}},
+            "formula_embedding": {"type": "knn_vector", "dimension": dimension, "space_type": "cosinesimil", "method": {"name": "hnsw", "engine": "faiss", "parameters": {"ef_construction": 128, "m": 24}}},
+            "formulas": {"type": "nested", "properties": {
+                "formula_id": {"type": "keyword"},
+                "latex": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 4096}}},
+                "normalized_latex": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 4096}}},
+                "description": {"type": "text"},
+                "formula_image_path": {"type": "keyword"},
+                "formula_image_status": {"type": "keyword"},
+                "latex_ocr_status": {"type": "keyword"},
+                "page": {"type": "integer"},
+                "bbox": {"type": "float"},
+                "source": {"type": "keyword"},
+                "pattern": {"type": "keyword"},
+                "confidence": {"type": "float"},
+                "human_validated": {"type": "boolean"}
+            }},
+            "citations": {"type": "nested", "properties": {"apa": {"type": "text"}, "doi": {"type": "keyword"}, "url": {"type": "keyword"}, "validated": {"type": "boolean"}}},
+            "metadata": {"type": "object", "enabled": true}
+        }}
+    })
+}
+
 async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Result<Value, ApiFailure> {
     let evidence = retrieve_evidence(state, goal, size, Some("hybrid")).await?;
     let hits = evidence.pointer("/hits/hits").and_then(Value::as_array).cloned().unwrap_or_default();
-    if hits.is_empty() {
+    if hits.is_empty() && !bool_env("VERITAS_ALLOW_EMPTY_EVIDENCE", false) {
         return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "plan.no_evidence", "No OpenSearch evidence hits were found for the prompt.", "Ingest arXiv papers or local PDFs first, then retry. Use `veritas search <query>` to verify retrieval."));
     }
     let formula_trace = run_formula_trace_query(state).await.unwrap_or_else(|error| {
         json!({"ok": false, "warning": {"code": error.code, "message": error.message, "remediation": error.remediation}})
     });
+    let ontology_facts = planner_fact_summary(state).await;
     let system = r#"You are the Veritas autonomous planner. You must return valid JSON only. No markdown. No prose outside JSON. Produce an evidence-backed plan using the provided retrieved evidence and ontology facts. Follow representation-first mathematical research: surface phenomenon, symbolic shadow, invariant, risk, plan, tasks, validation, build artifact. Do not claim production readiness until compile/test validation passes."#;
     let user = json!({
         "goal": goal,
-        "required_json_schema": plan_schema_description(),
+        "required_json_schema": schema_description_for(SchemaKey::Planner),
         "available_tools": ["retrieval", "sparql", "shacl_validate", "math_reasoning", "code_generation", "local_command", "test_runner"],
         "opensearch_evidence": compact_search_evidence(&evidence),
         "sparql_formula_trace": formula_trace,
+        "ontology_planner_fact_summary": ontology_facts,
         "hard_requirements": [
             "Return JSON only.",
             "Every step must have id, tool, description, input, and success_criteria.",
@@ -478,7 +1188,7 @@ async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Resul
             "Include risks and validation gates."
         ]
     }).to_string();
-    let plan = call_chat_model_json(state, &state.planner_model, system, &user).await?;
+    let plan = call_chat_model_json(state, &state.planner_model, SchemaKey::Planner, system, &user).await?;
     validate_plan_schema(&plan)?;
     Ok(json!({
         "ok": true,
@@ -486,7 +1196,7 @@ async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Resul
         "status": "validated_structured_plan",
         "goal": goal,
         "model_route": {"planner": role_json(&state.planner_model), "code": role_json(&state.code_model), "math": role_json(&state.math_model)},
-        "evidence": {"opensearch_faiss_hnsw": compact_search_evidence(&evidence), "jena_fuseki_formula_trace": formula_trace},
+        "evidence": {"opensearch_faiss_hnsw": compact_search_evidence(&evidence), "jena_fuseki_formula_trace": formula_trace, "jena_fuseki_planner_fact_summary": ontology_facts},
         "plan": plan
     }))
 }
@@ -500,6 +1210,64 @@ fn plan_schema_description() -> Value {
         "risks": [{"risk": "string", "mitigation": "string"}],
         "validation_gates": [{"check": "string", "command": "optional string"}]
     })
+}
+
+
+fn schema_description_for(key: SchemaKey) -> Value {
+    schema_json(key)
+}
+
+
+fn validate_model_json(schema: SchemaKey, value: &Value) -> Result<(), ApiFailure> {
+    validate_required_object_fields(schema, value).map_err(|errors| ApiFailure::new(
+        StatusCode::BAD_GATEWAY,
+        "model.schema_required_fields",
+        format!("Model output failed required-field validation for {} schema.", schema.as_str()),
+        "Use vLLM structured outputs with the role-specific schema, reduce temperature, or choose a stronger model."
+    ).with_details(json!({"schema": schema.as_str(), "errors": errors, "output": value})))?;
+    match schema {
+        SchemaKey::Planner => validate_plan_schema(value),
+        SchemaKey::Codegen => validate_codegen_schema(value),
+        SchemaKey::MathReasoning => validate_math_reasoning_schema(value),
+        SchemaKey::Repair => validate_repair_schema(value),
+        SchemaKey::RunReport => Ok(()),
+    }
+}
+
+fn validate_repair_schema(output: &Value) -> Result<(), ApiFailure> {
+    let mut errors = Vec::new();
+    if output.get("failed_command").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("failed_command is required"); }
+    if output.get("failure_summary").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("failure_summary is required"); }
+    let files = output.get("files").and_then(Value::as_array);
+    if files.map(|v| v.is_empty()).unwrap_or(true) { errors.push("files must be a non-empty array"); }
+    let commands = output.get("commands").and_then(Value::as_array);
+    if commands.is_none() { errors.push("commands array is required"); }
+    if errors.is_empty() { Ok(()) } else { Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "repair.schema_invalid", "Repair model returned JSON that failed the Veritas repair schema.", "Use role-specific structured outputs and retry.").with_details(json!({"errors": errors, "output": output}))) }
+}
+
+fn validate_math_reasoning_schema(output: &Value) -> Result<(), ApiFailure> {
+    let mut errors = Vec::new();
+    let required_arrays = ["axiom_map", "primitive_ontology", "transformation_space", "constraint_geometry", "invariants", "generative_necessity", "symbolic_shadows", "transfer_tests", "risks", "validation_requirements"];
+    let required_objects = ["surface_phenomenon", "candidate_representation_map", "compression_fidelity", "recursive_closure"];
+    for field in ["summary", "representation_hypothesis", "status"] {
+        if output.get(field).and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) {
+            errors.push(format!("{field} is required"));
+        }
+    }
+    for field in required_arrays {
+        if output.get(field).and_then(Value::as_array).is_none() {
+            errors.push(format!("{field} array is required"));
+        }
+    }
+    for field in required_objects {
+        if output.get(field).and_then(Value::as_object).is_none() {
+            errors.push(format!("{field} object is required"));
+        }
+    }
+    if output.get("invariants").and_then(Value::as_array).map(|v| v.is_empty()).unwrap_or(true) {
+        errors.push("at least one invariant candidate or explicit exploratory invariant note is required".to_string());
+    }
+    if errors.is_empty() { Ok(()) } else { Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "math.schema_invalid", "Math model returned JSON that failed the Veritas representation-first math reasoning schema.", "Use the math model role with structured outputs enabled. Required fields mirror MATH.md: surface phenomenon, representation map, transformations, invariants, compression fidelity, recursion, necessity, symbolic shadows, transfer, and status.").with_details(json!({"errors": errors, "output": output}))) }
 }
 
 fn validate_plan_schema(plan: &Value) -> Result<(), ApiFailure> {
@@ -546,55 +1314,127 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
     if req.goal.trim().is_empty() {
         return Err(ApiFailure::new(StatusCode::BAD_REQUEST, "run.validation", "Run request goal is empty.", "Provide a non-empty goal."));
     }
+    fs::create_dir_all(&state.runs_dir).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.runs_dir_create", format!("Could not create runs directory: {error}"), "Ensure the API container has write access to VERITAS_RUNS_DIR."))?;
     let run_id = format!("run-{}-{}", now_millis(), uuid::Uuid::new_v4().simple());
     let workspace = state.runs_dir.join(&run_id);
     fs::create_dir_all(&workspace).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.workspace_create", format!("Could not create run workspace: {error}"), "Ensure the API container has write access to /workspace/data/runs."))?;
-    persist_run_state(&workspace, "Created", json!({"goal": req.goal})).await?;
+    let _lock = acquire_run_lock(&workspace, &run_id).await?;
+    let mut persisted_req: RunResumeRequest = req.clone().into();
+    persisted_req.run_id = run_id.clone();
+    write_json_file(&workspace.join("request.json"), &json!(persisted_req)).await?;
+    persist_run_state(&workspace, "Created", json!({"goal": req.goal, "run_id": run_id})).await?;
+    execute_autonomous_run_core(state, run_id, workspace, req, false).await
+}
 
-    let language = req.language.unwrap_or_else(|| "rust".to_string());
+async fn resume_autonomous_run(state: &AppState, run_id: &str, workspace: PathBuf) -> Result<Value, ApiFailure> {
+    let _lock = acquire_run_lock(&workspace, run_id).await?;
+    let request_value = read_json_file(&workspace.join("request.json")).await
+        .ok_or_else(|| ApiFailure::new(StatusCode::CONFLICT, "run.resume.request_missing", format!("Run {run_id} has no request.json."), "Only runs created after Pass 2 durable execution support can be resumed automatically. Start a new run or manually inspect the workspace."))?;
+    let request: RunResumeRequest = serde_json::from_value(request_value.clone())
+        .map_err(|error| ApiFailure::new(StatusCode::CONFLICT, "run.resume.request_invalid", format!("Run {run_id} request.json is invalid: {error}"), "Inspect request.json or start a new run.").with_details(request_value))?;
+    persist_run_state(&workspace, "ResumeRequested", json!({"run_id": run_id, "request": request})).await?;
+    execute_autonomous_run_core(state, run_id.to_string(), workspace, request.into_run_request(), true).await
+}
+
+async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace: PathBuf, req: RunRequest, resume: bool) -> Result<Value, ApiFailure> {
+    if workspace.join("CANCELLED").exists() {
+        persist_run_state(&workspace, "Cancelled", json!({"reason": "cancel marker existed before execution"})).await?;
+        return Err(ApiFailure::new(StatusCode::CONFLICT, "run.cancelled", format!("Run {run_id} is cancelled."), "Start a new run, or remove the cancellation marker only if you intentionally want to retry this exact workspace."));
+    }
+
+    let language = req.language.clone().unwrap_or_else(|| "rust".to_string());
     let max_retries = req.max_retries.unwrap_or(state.max_retries).min(5);
-    let plan_envelope = build_structured_plan(state, &req.goal, req.size.unwrap_or(8)).await?;
-    persist_run_state(&workspace, "Planned", json!({"plan_envelope": plan_envelope})).await?;
+    let plan_envelope_path = workspace.join("plan_envelope.json");
+    let plan_envelope = if resume && plan_envelope_path.exists() {
+        read_json_file(&plan_envelope_path).await.ok_or_else(|| ApiFailure::new(StatusCode::CONFLICT, "run.resume.plan_unreadable", "The persisted plan_envelope.json could not be read.", "Inspect or delete the corrupted plan file before resuming."))?
+    } else {
+        let envelope = build_structured_plan(state, &req.goal, req.size.unwrap_or(8)).await?;
+        write_json_file(&plan_envelope_path, &envelope).await?;
+        persist_run_state(&workspace, "Planned", json!({"plan_envelope_path": plan_envelope_path.display().to_string(), "resumed": resume})).await?;
+        envelope
+    };
     let plan = plan_envelope.get("plan").cloned().unwrap_or_else(|| json!({}));
-    let mut tool_calls = Vec::new();
-    let mut files_changed: Vec<String> = Vec::new();
-    let mut commands_run: Vec<Value> = Vec::new();
-    let mut validation_results: Vec<Value> = Vec::new();
-    let mut retry_history: Vec<Value> = Vec::new();
+    write_json_file(&workspace.join("plan.json"), &plan).await?;
 
-    let tool_outputs = execute_planner_selected_tools(state, &plan, &req.goal, &mut tool_calls).await;
-    let mut last_error_summary = String::new();
-    let mut code_package = json!({});
+    let mut tool_calls: Vec<Value> = read_json_file(&workspace.join("tool_calls.json")).await.and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    let tool_outputs_path = workspace.join("tool_outputs.json");
+    let tool_outputs = if resume && tool_outputs_path.exists() {
+        read_json_file(&tool_outputs_path).await.unwrap_or_else(|| json!([]))
+    } else {
+        let outputs = execute_planner_selected_tools(state, &plan, &req.goal, &mut tool_calls).await;
+        write_json_file(&tool_outputs_path, &outputs).await?;
+        write_json_file(&workspace.join("tool_calls.json"), &json!(tool_calls)).await?;
+        outputs
+    };
+
+    let automatic_shacl_path = workspace.join("automatic_shacl_report.json");
+    let automatic_shacl = if resume && automatic_shacl_path.exists() {
+        read_json_file(&automatic_shacl_path).await.unwrap_or_else(|| json!({"ok": false, "warning": "existing SHACL report unreadable"}))
+    } else {
+        let report = automatic_shacl_gate(state, &workspace, &plan).await?;
+        write_json_file(&automatic_shacl_path, &report).await?;
+        persist_run_state(&workspace, "ShaclValidated", json!({"automatic_shacl_path": automatic_shacl_path.display().to_string(), "resumed": resume})).await?;
+        report
+    };
+
+    let mut files_changed: Vec<String> = read_json_file(&workspace.join("files_changed.json")).await
+        .and_then(|v| v.as_array().cloned())
+        .map(|items| items.into_iter().filter_map(|v| v.as_str().map(ToString::to_string)).collect())
+        .unwrap_or_default();
+    let mut commands_run: Vec<Value> = read_json_file(&workspace.join("commands_run.json")).await.and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    let mut validation_results: Vec<Value> = read_json_file(&workspace.join("validation_results.json")).await.and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    let mut retry_history: Vec<Value> = read_json_file(&workspace.join("retry_history.json")).await.and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    let mut last_error_summary = validation_results.last().cloned().unwrap_or_else(|| json!({})).to_string();
+    let mut code_package = read_json_file(&workspace.join("code_package_latest.json")).await.unwrap_or_else(|| json!({}));
     let mut final_status = "failed".to_string();
-    let mut attempts_performed = 0usize;
+    let mut attempts_performed = validation_results.len();
+    let start_attempt = attempts_performed.min(max_retries + 1);
 
-    for attempt in 0..=max_retries {
+    for attempt in start_attempt..=max_retries {
+        if workspace.join("CANCELLED").exists() {
+            final_status = "cancelled".to_string();
+            persist_run_state(&workspace, "Cancelled", json!({"attempt": attempt})).await?;
+            break;
+        }
         attempts_performed = attempt + 1;
         let code_prompt = build_code_generation_prompt(&req.goal, &language, &plan, &plan_envelope["evidence"], &tool_outputs, &last_error_summary, attempt);
-        let generated = call_chat_model_json(state, &state.code_model, codegen_system_prompt(), &code_prompt).await?;
+        let generated = call_chat_model_json(state, &state.code_model, SchemaKey::Codegen, codegen_system_prompt(), &code_prompt).await?;
         validate_codegen_schema(&generated)?;
-        persist_run_state(&workspace, "GeneratingCode", json!({"attempt": attempt})).await?;
+        persist_run_state(&workspace, "GeneratingCode", json!({"attempt": attempt, "resumed": resume})).await?;
+        write_json_file(&workspace.join(format!("code_package_attempt_{attempt}.json")), &generated).await?;
         write_generated_files(&workspace, &generated, &mut files_changed).await?;
         code_package = generated.clone();
+        write_json_file(&workspace.join("code_package_latest.json"), &code_package).await?;
+        write_json_file(&workspace.join("files_changed.json"), &json!(files_changed)).await?;
 
         let commands = commands_for_run(&workspace, &language, &generated);
         let mut all_passed = true;
         let mut attempt_results = Vec::new();
         for command in commands {
+            if workspace.join("CANCELLED").exists() {
+                all_passed = false;
+                final_status = "cancelled".to_string();
+                persist_run_state(&workspace, "Cancelled", json!({"attempt": attempt, "during": "validation"})).await?;
+                break;
+            }
             persist_run_state(&workspace, "RunningValidation", json!({"attempt": attempt, "command": command})).await?;
             let result = run_command(&workspace, &command, state.command_timeout_secs).await;
+            append_command_audit(&workspace, &result).await?;
             commands_run.push(result.clone());
             attempt_results.push(result.clone());
             if !result.get("success").and_then(Value::as_bool).unwrap_or(false) {
                 all_passed = false;
             }
         }
+        write_json_file(&workspace.join("commands_run.json"), &json!(commands_run)).await?;
         validation_results.push(json!({"attempt": attempt, "results": attempt_results}));
+        write_json_file(&workspace.join("validation_results.json"), &json!(validation_results)).await?;
         if all_passed {
             final_status = "production_candidate_validated".to_string();
             persist_run_state(&workspace, "Validated", json!({"attempt": attempt})).await?;
             break;
         }
+        if final_status == "cancelled" { break; }
         last_error_summary = validation_results.last().cloned().unwrap_or_else(|| json!({})).to_string();
         persist_run_state(&workspace, "Repairing", json!({"attempt": attempt, "failure_summary": last_error_summary})).await?;
         retry_history.push(json!({
@@ -602,9 +1442,10 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
             "reason": "compile_or_test_failure",
             "feedback_sent_to_code_model": last_error_summary
         }));
+        write_json_file(&workspace.join("retry_history.json"), &json!(retry_history)).await?;
     }
 
-    let report = json!({
+    let mut report = json!({
         "ok": final_status == "production_candidate_validated",
         "kind": "VeritasAutonomousRunReport",
         "run_id": run_id,
@@ -614,18 +1455,23 @@ async fn execute_autonomous_run(state: &AppState, req: RunRequest) -> Result<Val
         "generated_plan": plan,
         "model_routes_used": {"planner": role_json(&state.planner_model), "code": role_json(&state.code_model), "math": role_json(&state.math_model)},
         "tool_calls_performed": tool_calls,
+        "automatic_shacl": automatic_shacl,
         "files_changed": files_changed,
         "commands_run": commands_run,
         "validation_results": validation_results,
+        "attempts_performed": attempts_performed,
         "retries_performed": retry_history.len(),
         "retry_history": retry_history,
         "generated_package_status": final_status,
         "final_status": final_status,
-        "remaining_limitations": if final_status == "production_candidate_validated" { json!([]) } else { json!(["Generated code did not pass compile/test validation within the configured retry limit."]) },
+        "resumed": resume,
+        "remaining_limitations": if final_status == "production_candidate_validated" { json!([]) } else { json!(["Generated code did not pass compile/test validation within the configured retry limit, or the run was cancelled."]) },
         "code_model_output": code_package,
     });
-    let report_text = serde_json::to_string_pretty(&report).unwrap_or_else(|_| report.to_string());
-    fs::write(workspace.join("final_report.json"), report_text).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.report_write", format!("Could not write final report: {error}"), "Check write permissions for the run workspace."))?;
+    let graph_upload = upload_run_report_to_fuseki(state, &run_id, &report).await.unwrap_or_else(|error| json!({"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}));
+    report["fuseki_run_graph_upload"] = graph_upload;
+    write_json_file(&workspace.join("final_report.json"), &report).await?;
+    persist_run_state(&workspace, "FinalReportWritten", json!({"final_status": report.get("final_status"), "report": "final_report.json"})).await?;
     Ok(report)
 }
 
@@ -655,9 +1501,10 @@ async fn execute_planner_selected_tools(state: &AppState, plan: &Value, goal: &s
                     outputs.push(json!({"tool": "shacl_validate", "step": step, "result": result.ok()}));
                 }
                 "math_reasoning" => {
-                    let input = step.get("input").cloned().unwrap_or_else(|| json!({"goal": goal})).to_string();
-                    let result = call_chat_model_text(state, &state.math_model, "You are Veritas Math Reasoner. Return concise mathematical reasoning summaries only, with assumptions, invariants, and failure cases. Do not expose private chain-of-thought.", &input).await;
-                    tool_calls.push(json!({"tool": "math_reasoning", "success": result.is_ok()}));
+                    let input = step.get("input").cloned().unwrap_or_else(|| json!({"goal": goal}));
+                    let prompt = build_math_to_code_reasoning_prompt(&json!({"planner_step_input": input, "goal": goal}), "analysis");
+                    let result = call_chat_model_json(state, &state.math_model, SchemaKey::MathReasoning, math_to_code_system_prompt(), &prompt).await;
+                    tool_calls.push(json!({"tool": "math_reasoning", "schema": "math_reasoning", "success": result.is_ok()}));
                     outputs.push(json!({"tool": "math_reasoning", "step": step, "result": result.ok()}));
                 }
                 "code_generation" | "test_runner" | "local_command" => {
@@ -766,38 +1613,59 @@ fn commands_for_run(workspace: &Path, language: &str, generated: &Value) -> Vec<
 }
 
 async fn run_command(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
+    let runner = env::var("VERITAS_COMMAND_RUNNER").unwrap_or_else(|_| "local".to_string());
+    if runner == "docker" || runner == "sandbox" {
+        run_command_in_docker_sandbox(workspace, command, timeout_secs).await
+    } else {
+        run_command_local(workspace, command, timeout_secs).await
+    }
+}
+
+async fn run_command_local(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
     let started = now_millis();
     if !command_allowed(command) {
-        return json!({"command": command, "success": false, "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Use cargo test/check/fmt/clippy, python -m pytest/build, ruff, mypy, cmake, or ctest unless the operator explicitly extends the allowlist."});
+        return json!({"command": command, "success": false, "runner": "local", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Use cargo test/check/fmt/clippy, python -m pytest/build, ruff, mypy, cmake, or ctest unless the operator explicitly extends the allowlist."});
     }
+    let result = timeout(Duration::from_secs(timeout_secs), Command::new("sh").arg("-lc").arg(command).current_dir(workspace).output()).await;
+    command_output_json("local", command, started, timeout_secs, result)
+}
+
+async fn run_command_in_docker_sandbox(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
+    let started = now_millis();
+    if !command_allowed(command) {
+        return json!({"command": command, "success": false, "runner": "docker_sandbox", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Only approved compile/test commands may run in the sandbox."});
+    }
+    let image = env::var("VERITAS_SANDBOX_IMAGE").unwrap_or_else(|_| "veritas-sandbox-rust:latest".to_string());
+    let memory = env::var("VERITAS_SANDBOX_MEMORY").unwrap_or_else(|_| "2g".to_string());
+    let cpus = env::var("VERITAS_SANDBOX_CPUS").unwrap_or_else(|_| "2".to_string());
+    let mount = format!("{}:/workspace", workspace.display());
     let result = timeout(
         Duration::from_secs(timeout_secs),
-        Command::new("sh").arg("-lc").arg(command).current_dir(workspace).output(),
+        Command::new("docker")
+            .arg("run").arg("--rm")
+            .arg("--network").arg("none")
+            .arg("--cpus").arg(cpus)
+            .arg("--memory").arg(memory)
+            .arg("-v").arg(mount)
+            .arg("-w").arg("/workspace")
+            .arg(image)
+            .arg("sh").arg("-lc").arg(command)
+            .output(),
     ).await;
+    command_output_json("docker_sandbox", command, started, timeout_secs, result)
+}
+
+fn command_output_json(runner: &str, command: &str, started: u128, timeout_secs: u64, result: Result<Result<std::process::Output, std::io::Error>, tokio::time::error::Elapsed>) -> Value {
     match result {
-        Ok(Ok(output)) => json!({
-            "command": command,
-            "success": output.status.success(),
-            "exit_code": output.status.code(),
-            "duration_ms": now_millis().saturating_sub(started),
-            "stdout": String::from_utf8_lossy(&output.stdout).to_string(),
-            "stderr": String::from_utf8_lossy(&output.stderr).to_string()
-        }),
-        Ok(Err(error)) => json!({
-            "command": command,
-            "success": false,
-            "duration_ms": now_millis().saturating_sub(started),
-            "error": format!("Failed to launch command: {error}"),
-            "remediation": "Ensure required toolchains are installed in the API container. Rust packages require cargo in Dockerfile.api."
-        }),
-        Err(_) => json!({
-            "command": command,
-            "success": false,
-            "duration_ms": now_millis().saturating_sub(started),
-            "error": format!("Command timed out after {timeout_secs}s"),
-            "remediation": "Increase VERITAS_COMMAND_TIMEOUT_SECS or simplify generated tests."
-        }),
+        Ok(Ok(output)) => json!({"command": command, "runner": runner, "success": output.status.success(), "exit_code": output.status.code(), "duration_ms": now_millis().saturating_sub(started), "stdout": truncate_output(&String::from_utf8_lossy(&output.stdout)), "stderr": truncate_output(&String::from_utf8_lossy(&output.stderr))}),
+        Ok(Err(error)) => json!({"command": command, "runner": runner, "success": false, "duration_ms": now_millis().saturating_sub(started), "error": format!("Failed to launch command: {error}"), "remediation": "Ensure Docker and the selected sandbox image/toolchain are available."}),
+        Err(_) => json!({"command": command, "runner": runner, "success": false, "duration_ms": now_millis().saturating_sub(started), "error": format!("Command timed out after {timeout_secs}s"), "remediation": "Increase VERITAS_COMMAND_TIMEOUT_SECS or simplify generated tests."}),
     }
+}
+
+fn truncate_output(text: &str) -> String {
+    let limit = uint_env("VERITAS_COMMAND_OUTPUT_LIMIT", 20000) as usize;
+    if text.len() <= limit { text.to_string() } else { format!("{}\n... [truncated to last {limit} chars]", &text[text.len().saturating_sub(limit)..]) }
 }
 
 async fn retrieve_evidence(state: &AppState, query: &str, size: u32, mode: Option<&str>) -> Result<Value, ApiFailure> {
@@ -809,13 +1677,39 @@ async fn retrieve_evidence(state: &AppState, query: &str, size: u32, mode: Optio
         let vector = embed_query(state, query).await?;
         if mode == "semantic" { vector_query(&state.opensearch_vector_field, vector, size) } else { hybrid_query(query, &state.opensearch_vector_field, vector, size) }
     };
-    let url = format!("{}/{}/_search", state.opensearch_url.trim_end_matches('/'), state.opensearch_index);
-    let response = state.http.post(&url).json(&body).send().await.map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "search.transport", format!("OpenSearch request failed before the service returned a response: {error}"), "Check OpenSearch readiness with `veritas ready` and inspect `docker compose logs opensearch`."))?;
+    let primary_target = &state.opensearch_index;
+    match post_opensearch_search(state, primary_target, &body).await {
+        Ok(mut value) => {
+            value["veritas_search_target"] = json!(primary_target);
+            Ok(value)
+        }
+        Err(error) => {
+            let retry_targets = [&state.opensearch_read_alias, &state.opensearch_write_alias, &state.opensearch_base_index, &state.opensearch_versioned_index];
+            let mut attempts = vec![json!({"target": primary_target, "error": {"code": error.code, "message": error.message}})];
+            for target in retry_targets {
+                if target == primary_target { continue; }
+                match post_opensearch_search(state, target, &body).await {
+                    Ok(mut value) => {
+                        value["veritas_search_target"] = json!(target);
+                        value["veritas_search_fallback_attempts"] = json!(attempts);
+                        return Ok(value);
+                    }
+                    Err(next_error) => attempts.push(json!({"target": target, "error": {"code": next_error.code, "message": next_error.message}})),
+                }
+            }
+            Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "search.all_targets_failed", "OpenSearch search failed across configured read alias, write alias, base index, and versioned index.", "Run `veritas opensearch-migrate`, ingest documents, then retry search. Inspect OpenSearch logs if aliases are missing.").with_details(json!({"attempts": attempts})))
+        }
+    }
+}
+
+async fn post_opensearch_search(state: &AppState, target: &str, body: &Value) -> Result<Value, ApiFailure> {
+    let url = format!("{}/{}/_search", state.opensearch_url.trim_end_matches('/'), target);
+    let response = state.http.post(&url).json(body).send().await.map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "search.transport", format!("OpenSearch request failed before the service returned a response for target {target}: {error}"), "Check OpenSearch readiness with `veritas ready` and inspect `docker compose logs opensearch`."))?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
     if !status.is_success() {
-        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "search.upstream", format!("OpenSearch returned HTTP {}", status.as_u16()), "Check OpenSearch logs, index mapping, and whether data has been ingested.").with_details(body));
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "search.upstream", format!("OpenSearch target {target} returned HTTP {}", status.as_u16()), "Check OpenSearch logs, index mapping, aliases, and whether data has been ingested.").with_details(body));
     }
     Ok(body)
 }
@@ -894,79 +1788,69 @@ async fn run_sparql(state: &AppState, query: &str) -> Result<Value, ApiFailure> 
 }
 
 async fn call_chat_model_text(state: &AppState, role: &ModelRole, system: &str, user: &str) -> Result<Value, ApiFailure> {
-    let raw = call_chat_model_raw(state, role, system, user, false).await?;
+    let raw = call_chat_model_raw(state, role, system, user, None).await?;
     let content = extract_model_content(&raw).unwrap_or_else(|| raw.to_string());
     Ok(json!({"raw": raw, "content": content}))
 }
 
-async fn call_chat_model_json(state: &AppState, role: &ModelRole, system: &str, user: &str) -> Result<Value, ApiFailure> {
-    let raw = call_chat_model_raw(state, role, system, user, true).await?;
+async fn call_chat_model_json(state: &AppState, role: &ModelRole, schema: SchemaKey, system: &str, user: &str) -> Result<Value, ApiFailure> {
+    let raw = call_chat_model_raw(state, role, system, user, Some(schema)).await?;
     let content = extract_model_content(&raw).unwrap_or_else(|| raw.to_string());
     match parse_json_object_from_text(&content) {
-        Ok(value) => Ok(value),
+        Ok(value) => { validate_model_json(schema, &value)?; Ok(value) },
         Err(first_error) => {
             let repair_user = json!({"invalid_output": content, "parse_error": first_error, "instruction": "Return the same content as a single valid JSON object. No markdown. No prose."}).to_string();
-            let repaired_raw = call_chat_model_raw(state, role, "You repair invalid JSON. Return JSON only.", &repair_user, true).await?;
+            let repaired_raw = call_chat_model_raw(state, role, "You repair invalid JSON. Return JSON only.", &repair_user, Some(schema)).await?;
             let repaired = extract_model_content(&repaired_raw).unwrap_or_else(|| repaired_raw.to_string());
-            parse_json_object_from_text(&repaired).map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "model.invalid_json", format!("Model did not return valid JSON after repair: {error}"), "Use a stronger model, reduce temperature, or inspect vLLM output.").with_details(json!({"first_error": first_error, "raw": raw, "repair_raw": repaired_raw})))
+            let parsed = parse_json_object_from_text(&repaired).map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "model.invalid_json", format!("Model did not return valid JSON after repair: {error}"), "Use a stronger model, reduce temperature, or inspect vLLM output.").with_details(json!({"first_error": first_error, "raw": raw, "repair_raw": repaired_raw})))?;
+            validate_model_json(schema, &parsed)?;
+            Ok(parsed)
         }
     }
 }
 
-async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, user: &str, json_mode: bool) -> Result<Value, ApiFailure> {
-    let primary = send_chat_completion(state, &role.url, &role.served_model_name, role, system, user, json_mode).await;
-    match primary {
-        Ok(value) => Ok(value),
-        Err(error) => {
-            if state.remote_model_enabled && !state.remote_model_base_url.trim().is_empty() && !state.remote_model_name.trim().is_empty() {
-                let fallback_role = ModelRole {
-                    role: role.role,
-                    url: state.remote_model_base_url.clone(),
-                    model: state.remote_model_name.clone(),
-                    served_model_name: state.remote_model_name.clone(),
-                    temperature: role.temperature,
-                    top_p: role.top_p,
-                    max_tokens: role.max_tokens,
-                    timeout_secs: role.timeout_secs,
-                };
-                let remote = send_chat_completion(state, &fallback_role.url, &fallback_role.served_model_name, &fallback_role, system, user, json_mode).await;
-                return remote.map_err(|remote_error| ApiFailure::new(
-                    StatusCode::BAD_GATEWAY,
-                    "model.all_providers_failed",
-                    "Both local vLLM and configured remote OpenAI-compatible fallback failed.",
-                    "Check local vLLM health, remote endpoint/API key, GPU memory, and model IDs."
-                ).with_details(json!({"local_error": error.message, "remote_error": remote_error.message})));
-            }
-            Err(error)
-        }
-    }
-}
-
-async fn send_chat_completion(state: &AppState, base_url: &str, served_model_name: &str, role: &ModelRole, system: &str, user: &str, json_mode: bool) -> Result<Value, ApiFailure> {
-    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let mut payload = json!({
-        "model": served_model_name,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "temperature": role.temperature,
-        "top_p": role.top_p,
-        "max_tokens": role.max_tokens
-    });
-    if json_mode {
-        payload["response_format"] = json!({"type": "json_object"});
-        payload["guided_json"] = plan_schema_description();
-    }
-    let fut = state.http.post(&url).json(&payload).send();
-    let response = timeout(Duration::from_secs(role.timeout_secs), fut)
+async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, user: &str, schema: Option<SchemaKey>) -> Result<Value, ApiFailure> {
+    state.provider_router
+        .chat_raw(role, system, user, schema)
         .await
-        .map_err(|_| ApiFailure::new(StatusCode::GATEWAY_TIMEOUT, "vllm.timeout", format!("Model request for role {} timed out after {}s", role.role, role.timeout_secs), "Increase the role timeout, reduce context length, or choose a smaller/faster model."))?
-        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.transport", format!("Model request failed before response: {error}"), "Start the selected vLLM Docker Compose profile or configure a reachable OpenAI-compatible fallback."))?;
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    let body = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"raw": text}));
-    if !status.is_success() {
-        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "vllm.upstream", format!("Model endpoint returned HTTP {}", status.as_u16()), "Check model ID, Hugging Face token, GPU memory, provider URL, and logs.").with_details(body));
+        .map_err(ApiFailure::from_provider_error)
+}
+
+async fn automatic_shacl_gate(state: &AppState, workspace: &Path, plan: &Value) -> Result<Value, ApiFailure> {
+    let data_ttl = plan_to_turtle(plan);
+    let shapes_ttl = default_shacl_shapes();
+    let result = run_shacl_validation(state, &data_ttl, &shapes_ttl).await;
+    match result {
+        Ok(value) => {
+            let conforms = value.get("conforms").and_then(Value::as_bool).unwrap_or(true);
+            let path = workspace.join("automatic_shacl_report.json");
+            let _ = fs::write(&path, serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())).await;
+            if state.shacl_enforce && !conforms {
+                return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.gate_failed", "Automatic SHACL validation failed before code generation.", "Review automatic_shacl_report.json, fix missing ontology obligations, or run with VERITAS_SHACL_ENFORCE=false for exploratory work only.").with_details(value));
+            }
+            Ok(json!({"ok": true, "enforced": state.shacl_enforce, "conforms": conforms, "report_path": path.display().to_string(), "result": value}))
+        }
+        Err(error) => {
+            let warning = json!({"ok": false, "enforced": state.shacl_enforce, "error": {"code": error.code, "message": error.message, "remediation": error.remediation}});
+            if state.shacl_enforce { Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.unavailable", "SHACL validation is enforced but the SHACL service failed.", "Start the SHACL service or set VERITAS_SHACL_ENFORCE=false only for exploratory runs.").with_details(warning)) } else { Ok(warning) }
+        }
     }
-    Ok(body)
+}
+
+fn plan_to_turtle(plan: &Value) -> String {
+    let mut ttl = String::from("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    ttl.push_str("<urn:veritas:plan:auto> a veritas:EngineeringPlan ; veritas:hasAcceptanceCriterion <urn:veritas:acceptance:auto> ; veritas:validatedBy <urn:veritas:validation:auto> .\n");
+    ttl.push_str("<urn:veritas:acceptance:auto> a veritas:AcceptanceCriterion .\n<urn:veritas:validation:auto> a veritas:ValidationCheckSpecification .\n");
+    if let Some(risks) = plan.get("risks").and_then(Value::as_array) {
+        for (i, _risk) in risks.iter().enumerate() {
+            ttl.push_str(&format!("<urn:veritas:risk:auto:{i}> a veritas:Risk ; veritas:mitigatedBy <urn:veritas:mitigation:auto:{i}> .\n<urn:veritas:mitigation:auto:{i}> a veritas:MitigationSpecification .\n"));
+        }
+    }
+    ttl
+}
+
+fn default_shacl_shapes() -> String {
+    include_str!("../../../packages/ontology/shacl/veritas-core.shacl.ttl").to_string()
 }
 
 async fn run_shacl_validation(state: &AppState, data_ttl: &str, shapes_ttl: &str) -> Result<Value, ApiFailure> {
@@ -982,12 +1866,114 @@ async fn run_shacl_validation(state: &AppState, data_ttl: &str, shapes_ttl: &str
     Ok(body)
 }
 
+
+
+async fn upload_run_report_to_fuseki(state: &AppState, run_id: &str, report: &Value) -> Result<Value, ApiFailure> {
+    let graph_uri = format!("{}:{}", state.graph_run_base_uri, safe_iri_segment(run_id));
+    let validation_graph_uri = format!("{}:{}", state.graph_validation_base_uri, safe_iri_segment(run_id));
+    let status = report.get("final_status").and_then(Value::as_str).unwrap_or("unknown");
+    let goal = report.get("original_task").and_then(Value::as_str).unwrap_or("");
+    let mut ttl = String::from("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n@prefix dcterms: <http://purl.org/dc/terms/> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    ttl.push_str(&format!("<urn:veritas:run:{}> a veritas:PlannedEngineeringAct ; veritas:hasIdentifier \"{}\" ; veritas:hasStatus \"{}\" ; veritas:hasDescription \"{}\" .\n", safe_iri_segment(run_id), turtle_escape(run_id), turtle_escape(status), turtle_escape(goal)));
+    if let Some(files) = report.get("files_changed").and_then(Value::as_array) {
+        for (idx, file) in files.iter().enumerate() {
+            let path = file.as_str().unwrap_or("");
+            if path.is_empty() { continue; }
+            ttl.push_str(&format!("<urn:veritas:source:{}:{}> a veritas:SourceCodeArtifact ; veritas:hasIdentifier \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), idx, turtle_escape(path), safe_iri_segment(run_id)));
+        }
+    }
+    if status == "production_candidate_validated" {
+        ttl.push_str(&format!("<urn:veritas:build:{}> a veritas:BuildArtifact ; veritas:hasStatus \"production_candidate_validated\" .\n", safe_iri_segment(run_id)));
+    }
+    let run_upload = upload_turtle_to_fuseki(state, &graph_uri, &ttl, true, "text/turtle").await?;
+    let validation_ttl = format!("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n<urn:veritas:validation:{}> a veritas:VerificationResult ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), turtle_escape(status), safe_iri_segment(run_id));
+    let validation_upload = upload_turtle_to_fuseki(state, &validation_graph_uri, &validation_ttl, true, "text/turtle").await?;
+    Ok(json!({"ok": true, "run_graph_uri": graph_uri, "validation_graph_uri": validation_graph_uri, "run_upload": run_upload, "validation_upload": validation_upload}))
+}
+
+fn safe_iri_segment(value: &str) -> String {
+    let cleaned: String = value.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    let trimmed = cleaned.trim_matches('_');
+    if trimmed.is_empty() { "item".into() } else { trimmed.to_string() }
+}
+
+fn turtle_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ").replace('\r', " ")
+}
+
+async fn write_json_file(path: &Path, value: &Value) -> Result<(), ApiFailure> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "json.mkdir", format!("Could not create directory for {}: {error}", path.display()), "Check workspace permissions."))?;
+    }
+    let text = serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string());
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, text).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "json.write_tmp", format!("Could not write temporary JSON file {}: {error}", tmp.display()), "Check workspace permissions."))?;
+    fs::rename(&tmp, path).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "json.atomic_rename", format!("Could not atomically replace {}: {error}", path.display()), "Check workspace permissions and filesystem semantics."))?;
+    Ok(())
+}
+
+async fn acquire_run_lock(workspace: &Path, run_id: &str) -> Result<RunLock, ApiFailure> {
+    fs::create_dir_all(workspace).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.lock.mkdir", format!("Could not create run workspace before locking: {error}"), "Check VERITAS_RUNS_DIR permissions."))?;
+    let lock_path = workspace.join("run.lock");
+    if lock_path.exists() {
+        if let Ok(metadata) = std::fs::metadata(&lock_path) {
+            if let Ok(modified) = metadata.modified() {
+                let stale_after = uint_env("VERITAS_RUN_LOCK_STALE_SECS", 7200) as u64;
+                if modified.elapsed().map(|age| age.as_secs() > stale_after).unwrap_or(false) {
+                    let _ = std::fs::remove_file(&lock_path);
+                }
+            }
+        }
+    }
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(&lock_path).await
+        .map_err(|error| {
+            let remediation = "Another Veritas worker is already advancing this run, or a stale run.lock exists. Inspect /status/:run_id; set VERITAS_RUN_LOCK_STALE_SECS or remove the lock only after confirming no worker is active.";
+            ApiFailure::new(StatusCode::CONFLICT, "run.locked", format!("Could not acquire run lock for {run_id}: {error}"), remediation)
+                .with_details(json!({"lock_path": lock_path.display().to_string()}))
+        })?;
+    let payload = json!({"run_id": run_id, "pid": std::process::id(), "created_at_ms": now_millis()});
+    let mut line = payload.to_string();
+    line.push('\n');
+    file.write_all(line.as_bytes()).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.lock.write", format!("Could not write run lock metadata: {error}"), "Check workspace permissions."))?;
+    Ok(RunLock { path: lock_path, run_id: run_id.to_string() })
+}
+
+async fn append_command_audit(workspace: &Path, result: &Value) -> Result<(), ApiFailure> {
+    use tokio::io::AsyncWriteExt;
+    let path = workspace.join("command_audit.jsonl");
+    let mut event = result.clone();
+    event["ts_ms"] = json!(now_millis());
+    let mut line = serde_json::to_string(&event).unwrap_or_else(|_| event.to_string());
+    line.push('\n');
+    let mut file = tokio::fs::OpenOptions::new().create(true).append(true).open(&path).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "command.audit_open", format!("Could not open command audit log: {error}"), "Check workspace permissions."))?;
+    file.write_all(line.as_bytes()).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "command.audit_write", format!("Could not write command audit log: {error}"), "Check workspace permissions."))?;
+    Ok(())
+}
+
+async fn append_jsonl(path: &Path, value: &Value) -> Result<(), ApiFailure> {
+    use tokio::io::AsyncWriteExt;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "jsonl.mkdir", format!("Could not create directory for {}: {error}", path.display()), "Check workspace permissions."))?;
+    }
+    let mut line = serde_json::to_string(value).unwrap_or_else(|_| value.to_string());
+    line.push('\n');
+    let mut file = tokio::fs::OpenOptions::new().create(true).append(true).open(path).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "jsonl.open", format!("Could not open {}: {error}", path.display()), "Check workspace permissions."))?;
+    file.write_all(line.as_bytes()).await
+        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "jsonl.write", format!("Could not write {}: {error}", path.display()), "Check workspace permissions."))?;
+    Ok(())
+}
+
 async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -> Result<(), ApiFailure> {
     let state_file = workspace.join("state.json");
     let event_file = workspace.join("events.jsonl");
-    let event = json!({"ts_ms": now_millis(), "state": state_name, "payload": payload});
-    fs::write(&state_file, serde_json::to_string_pretty(&event).unwrap_or_else(|_| event.to_string())).await
-        .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.state_write", format!("Could not write state file: {error}"), "Check run workspace permissions."))?;
+    let sequence = next_event_sequence(&event_file).await;
+    let event = json!({"ts_ms": now_millis(), "sequence": sequence, "state": state_name, "payload": payload});
+    write_json_file(&state_file, &event).await?;
     let mut line = serde_json::to_string(&event).unwrap_or_else(|_| event.to_string());
     line.push('\n');
     use tokio::io::AsyncWriteExt;
@@ -996,6 +1982,13 @@ async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -
     file.write_all(line.as_bytes()).await
         .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.event_write", format!("Could not append events log: {error}"), "Check run workspace permissions."))?;
     Ok(())
+}
+
+async fn next_event_sequence(event_file: &Path) -> u64 {
+    match fs::read_to_string(event_file).await {
+        Ok(text) => text.lines().count() as u64,
+        Err(_) => 0,
+    }
 }
 
 fn command_allowed(command: &str) -> bool {

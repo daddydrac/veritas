@@ -97,6 +97,13 @@ def ensure_index(client: Any, index: str, cfg: dict[str, Any] | None = None) -> 
                         },
                         "description": {"type": "text"},
                         "formula_image_path": {"type": "keyword"},
+                        "formula_image_status": {"type": "keyword"},
+                        "latex_ocr_status": {"type": "keyword"},
+                        "latex_ocr_engine": {"type": "keyword"},
+                        "latex_ocr_confidence": {"type": "float"},
+                        "human_validated": {"type": "boolean"},
+                        "human_validation_status": {"type": "keyword"},
+                        "use_for_codegen": {"type": "boolean"},
                         "page": {"type": "integer"},
                         "bbox": {"type": "float"},
                         "raw_latex": {
@@ -159,6 +166,25 @@ def _safe_local_name(value: str) -> str:
     return s.strip("_") or "item"
 
 
+def document_graph_uri(cfg: dict[str, Any], paper_id: str, metadata: dict[str, Any]) -> str:
+    """Return a deterministic named graph URI for a source document.
+
+    Fuseki stores semantic RDF facts, not PDF binaries. This URI identifies
+    the document ABox graph containing SourceDocument, RetrievalResult,
+    SymbolicShadow, citation, and formula metadata facts.
+    """
+
+    ontology_cfg = cfg.get("ontology", {}) if cfg else {}
+    base = str(
+        ontology_cfg.get("document_graph_base_uri")
+        or ontology_cfg.get("graph_uri")
+        or "urn:veritas:graph:document"
+    ).rstrip(":/")
+    content_hash = str(metadata.get("pdf_sha256") or metadata.get("content_hash") or "").strip()
+    suffix = content_hash if content_hash else _safe_local_name(paper_id)
+    return f"{base}:{_safe_local_name(suffix)}"
+
+
 def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
     """Return Turtle graph facts for chunks and formulas."""
 
@@ -214,6 +240,20 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
                 g.add((firi, ns.hasDescription, Literal(str(formula.get("description")))))
             if formula.get("raw_latex"):
                 g.add((firi, ns.hasRawExpressionText, Literal(str(formula.get("raw_latex")))))
+            if formula.get("normalized_latex"):
+                g.add((firi, ns.hasNormalizedExpressionText, Literal(str(formula.get("normalized_latex")))))
+            if formula.get("formula_image_path"):
+                g.add((firi, ns.hasFormulaImagePath, Literal(str(formula.get("formula_image_path")))))
+            if formula.get("formula_image_status"):
+                g.add((firi, ns.hasFormulaImageStatus, Literal(str(formula.get("formula_image_status")))))
+            if formula.get("latex_ocr_status"):
+                g.add((firi, ns.hasLatexOcrStatus, Literal(str(formula.get("latex_ocr_status")))))
+            if formula.get("latex_ocr_engine"):
+                g.add((firi, ns.hasLatexOcrEngine, Literal(str(formula.get("latex_ocr_engine")))))
+            if formula.get("human_validation_status"):
+                g.add((firi, ns.hasHumanValidationStatus, Literal(str(formula.get("human_validation_status")))))
+            elif formula.get("human_validated") is not None:
+                g.add((firi, ns.hasHumanValidationStatus, Literal(str(bool(formula.get("human_validated"))).lower())))
             g.add((firi, ns.hasFormulaSource, Literal(str(formula.get("source", "unknown")))))
             if formula.get("pattern"):
                 g.add((firi, ns.hasFormulaPattern, Literal(str(formula.get("pattern")))))

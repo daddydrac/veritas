@@ -1,0 +1,72 @@
+services:
+  fake-vllm-planner:
+    build: ./tests/fakes
+    environment:
+      FAKE_VLLM_MODEL: veritas-planner
+    ports: ["18001:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  fake-vllm-code:
+    build: ./tests/fakes
+    environment:
+      FAKE_VLLM_MODEL: veritas-code
+    ports: ["18002:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  fake-vllm-math:
+    build: ./tests/fakes
+    environment:
+      FAKE_VLLM_MODEL: veritas-math
+    ports: ["18003:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  embedding:
+    build:
+      context: ./tests/fakes
+      dockerfile: Dockerfile.embedding
+    environment:
+      VERITAS_FAKE_EMBEDDING_DIM: "768"
+    ports:
+      - "18090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  api:
+    environment:
+      VERITAS_REQUIRE_MODELS: "true"
+      VERITAS_ALLOW_EMPTY_EVIDENCE: "false"
+      VERITAS_PLANNER_VLLM_URL: http://fake-vllm-planner:8000
+      VERITAS_CODE_VLLM_URL: http://fake-vllm-code:8000
+      VERITAS_MATH_VLLM_URL: http://fake-vllm-math:8000
+      VERITAS_PLANNER_SERVED_MODEL_NAME: veritas-planner
+      VERITAS_CODE_SERVED_MODEL_NAME: veritas-code
+      VERITAS_MATH_SERVED_MODEL_NAME: veritas-math
+      VERITAS_COMMAND_RUNNER: local
+      VERITAS_SHACL_ENFORCE: "false"
+      VERITAS_EMBEDDING_URL: http://embedding:8090
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      fuseki:
+        condition: service_healthy
+      embedding:
+        condition: service_healthy
+      shacl:
+        condition: service_healthy
+      fake-vllm-planner:
+        condition: service_healthy
+      fake-vllm-code:
+        condition: service_healthy
+      fake-vllm-math:
+        condition: service_healthy

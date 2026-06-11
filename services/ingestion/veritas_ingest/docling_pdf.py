@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Any
 import json
 
+from .formulas import extract_docling_formula_candidates
+
 
 def convert_pdf(pdf_path: Path, out_dir: Path, extract_formulas: bool = True) -> dict[str, Any]:
     """Convert PDF to structured markdown/json.
@@ -32,15 +34,21 @@ def convert_pdf(pdf_path: Path, out_dir: Path, extract_formulas: bool = True) ->
         doc = result.document
         markdown = doc.export_to_markdown()
         md_path.write_text(markdown, encoding="utf-8")
+        doc_dict = {}
         try:
-            json_path.write_text(json.dumps(doc.export_to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+            doc_dict = doc.export_to_dict()
+            json_path.write_text(json.dumps(doc_dict, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
-            json_path.write_text(json.dumps({"warning": "Docling export_to_dict unavailable"}, indent=2), encoding="utf-8")
-        return {"parser": "docling", "text": markdown, "markdown_path": str(md_path), "json_path": str(json_path)}
+            doc_dict = {"warning": "Docling export_to_dict unavailable"}
+            json_path.write_text(json.dumps(doc_dict, indent=2), encoding="utf-8")
+        visual_formula_candidates = extract_docling_formula_candidates(doc_dict)
+        formulas_path = out_dir / f"{stem}.formulas.json"
+        formulas_path.write_text(json.dumps(visual_formula_candidates, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"parser": "docling", "text": markdown, "markdown_path": str(md_path), "json_path": str(json_path), "visual_formula_candidates": visual_formula_candidates, "formulas_path": str(formulas_path)}
     except Exception as exc:
         from pypdf import PdfReader
         reader = PdfReader(str(pdf_path))
         text = "\n\n".join((page.extract_text() or "") for page in reader.pages)
         md_path.write_text(text, encoding="utf-8")
         json_path.write_text(json.dumps({"parser": "pypdf", "fallback_reason": str(exc)}, indent=2), encoding="utf-8")
-        return {"parser": "pypdf", "text": text, "markdown_path": str(md_path), "json_path": str(json_path), "fallback_reason": str(exc)}
+        return {"parser": "pypdf", "text": text, "markdown_path": str(md_path), "json_path": str(json_path), "visual_formula_candidates": [], "fallback_reason": str(exc)}

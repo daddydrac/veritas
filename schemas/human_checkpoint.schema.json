@@ -3,17 +3,18 @@
   "required": [
     "phase",
     "question",
-    "options"
+    "artifact",
+    "options",
+    "decision"
   ],
   "properties": {
-    "phase": {
-      "type": "string"
-    },
-    "question": {
-      "type": "string"
-    },
-    "options": {
-      "type": "array"
-    }
+    "phase": {"type": "string"},
+    "question": {"type": "string"},
+    "artifact": {"type": "object"},
+    "options": {"type": "array"},
+    "decision": {"type": "string"},
+    "reviewer": {"type": "string"},
+    "status": {"type": "string"},
+    "notes": {"type": "string"}
   }
 }

@@ -5,7 +5,7 @@ import hashlib
 import re
 from typing import Any
 
-from .formulas import extract_formulas
+from .formulas import extract_formulas, merge_formula_candidates
 
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.;]")
 _WORD_RE = re.compile(r"\S+")
@@ -25,6 +25,8 @@ class Chunk:
 
 def _formula_containing(position: int, formulas: list[dict[str, Any]]) -> dict[str, Any] | None:
     for formula in formulas:
+        if formula.get("start") is None or formula.get("end") is None:
+            continue
         if formula["start"] <= position < formula["end"]:
             return formula
     return None
@@ -99,7 +101,8 @@ def make_chunks(
     """
     if not text or not text.strip():
         return []
-    formulas = extract_formulas(text, context_window=context_window)
+    visual_candidates = metadata.get("visual_formula_candidates", []) or []
+    formulas = merge_formula_candidates(extract_formulas(text, context_window=context_window), visual_candidates)
     chunks: list[Chunk] = []
     ordinal = 0
     start = 0
@@ -120,7 +123,7 @@ def make_chunks(
 
         # Expand through any formula that begins in the chunk and crosses end.
         for formula in formulas:
-            if start <= formula["start"] < end and formula["end"] > end:
+            if formula.get("start") is not None and formula.get("end") is not None and start <= formula["start"] < end and formula["end"] > end:
                 end = min(text_len, formula["end"] + context_window)
                 boundary_status = "expanded_to_preserve_formula"
 
@@ -148,7 +151,7 @@ def make_chunks(
             cformulas = [
                 _enrich_formula(paper_id, f, chunk_id)
                 for f in formulas
-                if start <= f["start"] and f["end"] <= end
+                if f.get("start") is not None and f.get("end") is not None and start <= f["start"] and f["end"] <= end
             ]
             chunks.append(Chunk(chunk_id, paper_id, ordinal, ctext, cformulas, metadata, "prose", boundary_status))
             ordinal += 1

@@ -2,22 +2,40 @@
   "type": "object",
   "required": [
     "summary",
-    "assumptions",
+    "axiom_map",
+    "surface_phenomenon",
+    "representation_hypothesis",
+    "candidate_representation_map",
+    "primitive_ontology",
+    "transformation_space",
+    "constraint_geometry",
     "invariants",
-    "risks"
+    "compression_fidelity",
+    "recursive_closure",
+    "generative_necessity",
+    "symbolic_shadows",
+    "transfer_tests",
+    "risks",
+    "validation_requirements",
+    "status"
   ],
   "properties": {
-    "summary": {
-      "type": "string"
-    },
-    "assumptions": {
-      "type": "array"
-    },
-    "invariants": {
-      "type": "array"
-    },
-    "risks": {
-      "type": "array"
-    }
+    "summary": {"type": "string"},
+    "axiom_map": {"type": "array"},
+    "surface_phenomenon": {"type": "object"},
+    "representation_hypothesis": {"type": "string"},
+    "candidate_representation_map": {"type": "object"},
+    "primitive_ontology": {"type": "array"},
+    "transformation_space": {"type": "array"},
+    "constraint_geometry": {"type": "array"},
+    "invariants": {"type": "array"},
+    "compression_fidelity": {"type": "object"},
+    "recursive_closure": {"type": "object"},
+    "generative_necessity": {"type": "array"},
+    "symbolic_shadows": {"type": "array"},
+    "transfer_tests": {"type": "array"},
+    "risks": {"type": "array"},
+    "validation_requirements": {"type": "array"},
+    "status": {"type": "string"}
   }
 }

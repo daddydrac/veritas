@@ -53,3 +53,29 @@ veritas:BuildArtifactShape a sh:NodeShape ;
 veritas:LoopSpecificationShape a sh:NodeShape ;
   sh:targetClass veritas:LoopSpecification ;
   sh:property [ sh:path veritas:hasTerminationCondition ; sh:minCount 1 ; sh:message "LoopSpecification must have a termination condition." ] .
+
+# Production math-to-code extraction obligations added in the hardening pass.
+veritas:FormulaImageReviewShape a sh:NodeShape ;
+  sh:targetClass veritas:SymbolicShadow ;
+  sh:property [ sh:path veritas:hasConfidenceValue ; sh:minCount 1 ; sh:message "SymbolicShadow must include extraction confidence before use in math-to-code." ] ;
+  sh:property [ sh:path veritas:hasHumanValidationStatus ; sh:minCount 1 ; sh:message "SymbolicShadow must record whether a human approved, edited, rejected, or auto-approved it." ] .
+
+veritas:MathDiscoveryReadinessShape a sh:NodeShape ;
+  sh:targetClass veritas:MathematicalDiscoveryArtifact ;
+  sh:or (
+    [ sh:property [ sh:path veritas:hasInvariant ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "exploratory" ] ]
+    [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "speculative" ] ]
+  ) ;
+  sh:message "MathematicalDiscoveryArtifact must either identify invariants or be explicitly marked exploratory/speculative." .
+
+# Pass 4: representation-first mathematical research-to-code obligations.
+veritas:Pass4SymbolicShadowMathReadinessShape a sh:NodeShape ;
+  sh:targetClass veritas:SymbolicShadow ;
+  sh:property [ sh:path veritas:hasHumanValidationStatus ; sh:minCount 1 ; sh:message "SymbolicShadow must record human validation status before math-to-code." ] ;
+  sh:property [ sh:path veritas:hasConfidenceValue ; sh:minCount 1 ; sh:message "SymbolicShadow must record extraction confidence before math-to-code." ] .
+
+veritas:Pass4MathematicalDiscoveryArtifactShape a sh:NodeShape ;
+  sh:targetClass veritas:MathematicalDiscoveryArtifact ;
+  sh:property [ sh:path veritas:hasAxiomMap ; sh:minCount 1 ; sh:message "Representation-first math artifacts must include Axiom Map references." ] ;
+  sh:property [ sh:path veritas:hasRepresentationMap ; sh:minCount 1 ; sh:message "Representation-first math artifacts must include a representation map." ] .

@@ -1,0 +1,41 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# Representation-first math rules derived from MATH.md / AGENTS.md.
+# These are closed-world readiness checks for math-to-code, not theorem proving.
+
+veritas:SymbolicShadowMathReadinessShape a sh:NodeShape ;
+  sh:targetClass veritas:SymbolicShadow ;
+  sh:property [ sh:path veritas:derivedFrom ; sh:minCount 1 ; sh:message "A SymbolicShadow must be derived from evidence before math-to-code." ] ;
+  sh:property [ sh:path veritas:hasExpressionText ; sh:minCount 1 ; sh:datatype xsd:string ; sh:message "A SymbolicShadow must preserve expression text or LaTeX." ] ;
+  sh:property [ sh:path veritas:hasFormulaSource ; sh:minCount 1 ; sh:message "A SymbolicShadow must record extraction source: docling, OCR, regex, human edit, etc." ] ;
+  sh:property [ sh:path veritas:hasHumanValidationStatus ; sh:minCount 1 ; sh:message "A SymbolicShadow used for code generation must record human validation status." ] ;
+  sh:property [ sh:path veritas:hasConfidenceValue ; sh:minCount 1 ; sh:message "A SymbolicShadow must record extraction confidence." ] .
+
+veritas:RepresentationMapMathShape a sh:NodeShape ;
+  sh:targetClass veritas:RepresentationMap ;
+  sh:property [ sh:path veritas:mapsFromSurface ; sh:minCount 1 ; sh:message "RepresentationMap must identify surface phenomenon." ] ;
+  sh:property [ sh:path veritas:mapsToLatentStructure ; sh:minCount 1 ; sh:message "RepresentationMap must identify latent structure." ] ;
+  sh:property [ sh:path veritas:preservesInvariant ; sh:minCount 1 ; sh:message "RepresentationMap must state which invariant is preserved." ] .
+
+veritas:InvariantMathShape a sh:NodeShape ;
+  sh:targetClass veritas:Invariant ;
+  sh:property [ sh:path veritas:hasTransformationFamily ; sh:minCount 1 ; sh:message "No transformation family means no invariant claim." ] .
+
+veritas:GenerativeNecessityMathShape a sh:NodeShape ;
+  sh:targetClass veritas:GenerativeNecessityClaim ;
+  sh:property [ sh:path veritas:supportedByEvidence ; sh:minCount 1 ; sh:message "Necessity claims must be evidence-backed." ] ;
+  sh:property [ sh:path veritas:hasProofStatus ; sh:minCount 1 ; sh:message "Necessity claims must disclose proof status." ] ;
+  sh:property [ sh:path veritas:testedByTransferTest ; sh:minCount 1 ; sh:message "Necessity claims must include transfer tests before discovery status is claimed." ] .
+
+veritas:MathematicalDiscoveryArtifactReadinessShape a sh:NodeShape ;
+  sh:targetClass veritas:MathematicalDiscoveryArtifact ;
+  sh:property [ sh:path veritas:hasAxiomMap ; sh:minCount 1 ; sh:message "Mathematical discovery artifacts must include an Axiom Map." ] ;
+  sh:property [ sh:path veritas:hasRepresentationMap ; sh:minCount 1 ; sh:message "Mathematical discovery artifacts must include a representation map." ] ;
+  sh:or (
+    [ sh:property [ sh:path veritas:hasInvariant ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "exploratory" ] ]
+    [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "speculative" ] ]
+  ) ;
+  sh:message "A mathematical discovery artifact must identify invariants or be explicitly exploratory/speculative." .

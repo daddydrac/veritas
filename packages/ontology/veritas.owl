@@ -1774,4 +1774,55 @@
     <veritas:module xml:lang="en">retrieval-memory</veritas:module>
   </owl:DatatypeProperty>
 
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaImagePath">
+    <rdfs:label xml:lang="en">has formula image path</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to a local or object-store path of the rendered formula image extracted from a source document.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaImageStatus">
+    <rdfs:label xml:lang="en">has formula image status</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the status of formula image extraction, such as rendered, missing bbox, or failed.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasHumanValidationStatus">
+    <rdfs:label xml:lang="en">has human validation status</rdfs:label>
+    <skos:definition xml:lang="en">Relates an extracted evidence, formula, plan, or generated artifact to a human validation status label.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+
+  <!-- Pass 4 mathematical research workflow datatype properties. -->
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasNormalizedExpressionText">
+    <rdfs:label xml:lang="en">has normalized expression text</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to normalized LaTeX or normalized symbolic expression text used for exact and semantic retrieval.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasLatexOcrStatus">
+    <rdfs:label xml:lang="en">has LaTeX OCR status</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the status of formula-image-to-LaTeX recognition.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasLatexOcrEngine">
+    <rdfs:label xml:lang="en">has LaTeX OCR engine</rdfs:label>
+    <skos:definition xml:lang="en">Relates a symbolic shadow to the OCR engine or provider used to derive LaTeX from a formula image.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasAxiomMap">
+    <rdfs:label xml:lang="en">has axiom map</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical reasoning artifact to the A0-A15 representation-first axioms used in the analysis.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasProofStatus">
+    <rdfs:label xml:lang="en">has proof status</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical claim to proof status such as speculative, plausible, experimentally supported, proved, formalized, false, or blocked.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+
 </rdf:RDF>

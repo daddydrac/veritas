@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .veritas data/runs data/fixtures data/e2e
+cat > .veritas/runtime.env <<'ENV'
+# Generated for fake-vLLM Docker E2E. Do not commit environment-specific secrets.
+COMPOSE_PROJECT_NAME=veritas-e2e
+VERITAS_API_PORT=8080
+VERITAS_OPENSEARCH_PORT=9200
+VERITAS_OPENSEARCH_DASHBOARDS_PORT=5601
+VERITAS_FUSEKI_PORT=3030
+VERITAS_FUSEKI_DATASET=veritas
+VERITAS_SHACL_PORT=8088
+VERITAS_EMBEDDING_PORT=8090
+VERITAS_OPENSEARCH_VERSION=2.19.5
+VERITAS_FUSEKI_IMAGE=stain/jena-fuseki:5.5.0
+VERITAS_VLLM_IMAGE=vllm/vllm-openai:latest
+HF_TOKEN=
+VERITAS_REQUIRE_MODELS=true
+VERITAS_ALLOW_EMPTY_EVIDENCE=false
+VERITAS_GPU_COUNT=0
+VERITAS_GPU_DEVICE_ID=0
+VERITAS_PLANNER_GPU_DEVICE_IDS=0
+VERITAS_CODE_GPU_DEVICE_IDS=0
+VERITAS_MATH_GPU_DEVICE_IDS=0
+VERITAS_PLANNER_TENSOR_PARALLEL_SIZE=1
+VERITAS_CODE_TENSOR_PARALLEL_SIZE=1
+VERITAS_MATH_TENSOR_PARALLEL_SIZE=1
+VERITAS_PLANNER_PIPELINE_PARALLEL_SIZE=1
+VERITAS_CODE_PIPELINE_PARALLEL_SIZE=1
+VERITAS_MATH_PIPELINE_PARALLEL_SIZE=1
+VERITAS_PLANNER_MODEL=veritas-planner
+VERITAS_PLANNER_SERVED_MODEL_NAME=veritas-planner
+VERITAS_PLANNER_VLLM_URL=http://fake-vllm-planner:8000
+VERITAS_CODE_MODEL=veritas-code
+VERITAS_CODE_SERVED_MODEL_NAME=veritas-code
+VERITAS_CODE_VLLM_URL=http://fake-vllm-code:8000
+VERITAS_MATH_MODEL=veritas-math
+VERITAS_MATH_SERVED_MODEL_NAME=veritas-math
+VERITAS_MATH_VLLM_URL=http://fake-vllm-math:8000
+VERITAS_REMOTE_MODEL_ENABLED=false
+VERITAS_REMOTE_MODEL_BASE_URL=
+VERITAS_REMOTE_MODEL_NAME=
+VERITAS_REMOTE_MODEL_API_KEY_ENV=VERITAS_REMOTE_MODEL_API_KEY
+VERITAS_EMBEDDING_MODEL=fake-sbert
+VERITAS_EMBEDDING_NORMALIZE=true
+VERITAS_EMBEDDING_URL=http://embedding:8090
+VERITAS_OPENSEARCH_URL=http://opensearch:9200
+VERITAS_OPENSEARCH_INDEX=veritas-evidence-write
+VERITAS_OPENSEARCH_INDEX_BASE=veritas-evidence
+VERITAS_OPENSEARCH_READ_ALIAS=veritas-evidence-read
+VERITAS_OPENSEARCH_WRITE_ALIAS=veritas-evidence-write
+VERITAS_OPENSEARCH_VERSIONED_INDEX=veritas-evidence-v1
+VERITAS_OPENSEARCH_MAPPING_VERSION=v1
+VERITAS_OPENSEARCH_VECTOR_FIELD=embedding
+VERITAS_OPENSEARCH_VECTOR_DIMENSION=768
+VERITAS_FUSEKI_QUERY_URL=http://fuseki:3030/veritas/sparql
+VERITAS_FUSEKI_DATA_URL=http://fuseki:3030/veritas/data
+VERITAS_FUSEKI_GRAPH_URL=http://fuseki:3030/veritas/data
+VERITAS_GRAPH_ONTOLOGY_URI=urn:veritas:graph:ontology
+VERITAS_GRAPH_DOCUMENT_BASE_URI=urn:veritas:graph:document
+VERITAS_GRAPH_RUN_BASE_URI=urn:veritas:graph:run
+VERITAS_GRAPH_VALIDATION_BASE_URI=urn:veritas:graph:validation
+VERITAS_PROJECT_DIR=data/runs
+VERITAS_RUNS_DIR=/workspace/data/runs
+VERITAS_AGENT_MAX_RETRIES=1
+VERITAS_COMMAND_TIMEOUT_SECS=180
+VERITAS_COMMAND_RUNNER=local
+VERITAS_SHACL_URL=http://shacl:8080
+VERITAS_SHACL_ENFORCE=false
+VERITAS_HUMAN_LOOP_POLICY=auto_approve
+VERITAS_FUSEKI_ADMIN_PASSWORD=admin
+OPENSEARCH_INITIAL_ADMIN_PASSWORD=VeritasAdmin123!
+ENV
+cat > .veritas/config.yaml <<'YAML'
+project:
+  generated_by: scripts/e2e/write-fake-runtime-env.sh
+  project_dir: data/runs
+models:
+  planner: veritas-planner
+  code: veritas-code
+  math: veritas-math
+  embeddings: fake-sbert
+hardware:
+  profile: fake-vllm-ci
+  gpu_count: 0
+services:
+  opensearch_index: veritas-evidence
+  fuseki_dataset: veritas
+validation:
+  fake_vllm_e2e: true
+YAML
+printf 'Wrote .veritas/runtime.env for fake-vLLM E2E.\n'

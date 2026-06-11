@@ -56,6 +56,18 @@ enum Commands {
         #[arg(long, default_value_t = true)]
         models: bool,
     },
+    /// Run the local fake-vLLM Docker Compose E2E proof path.
+    E2eFake {
+        #[arg(long, default_value_t = false)]
+        keep_running: bool,
+    },
+    /// Run host validation: Python, Rust, Docker config, and fake-vLLM E2E.
+    ValidateHost,
+    /// Run the strict production acceptance gate.
+    ProductionAccept {
+        #[arg(long, default_value_t = false)]
+        live_vllm: bool,
+    },
     /// Enter guided prompting mode after deployment.
     Prompt,
     /// Start the Docker Compose stack.
@@ -77,6 +89,56 @@ enum Commands {
     Ready,
     /// Show configured model roles and vLLM endpoints.
     Models,
+    /// Inspect NVIDIA GPUs available to the host for vLLM role placement.
+    GpuInspect,
+    /// Validate GPU routing and tensor/pipeline parallel settings captured by setup.
+    GpuValidate,
+    /// Print the production OpenSearch mapping that Veritas expects.
+    #[command(name = "opensearch-mapping", alias = "open-search-mapping")]
+    OpenSearchMapping,
+    /// Create or update the versioned OpenSearch FAISS/HNSW index and aliases.
+    #[command(name = "opensearch-migrate", alias = "open-search-migrate")]
+    OpenSearchMigrate {
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
+    /// Show OpenSearch versioned index and alias status.
+    #[command(name = "opensearch-status", alias = "open-search-status")]
+    OpenSearchStatus,
+    /// List configured and discovered Fuseki named graphs.
+    GraphList,
+    /// Summarize ontology-derived planner facts from the SPARQL query pack.
+    GraphFacts,
+    /// Count triples in a Fuseki named graph.
+    GraphDescribe { graph_uri: String },
+    /// Upload local Turtle RDF into a named Fuseki graph.
+    GraphUpload {
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        graph_uri: String,
+        #[arg(long, default_value_t = false)]
+        replace: bool,
+    },
+    /// Convert a formula or math problem into validated code through the math-to-code workflow.
+    MathToCode {
+        #[arg(long)]
+        formula_id: Option<String>,
+        #[arg(long)]
+        formula_latex: Option<String>,
+        #[arg(long)]
+        prompt: Option<String>,
+        #[arg(long, default_value = "rust")]
+        language: String,
+        #[arg(long)]
+        max_retries: Option<usize>,
+    },
+    /// Inspect a persisted run by id.
+    RunStatus { run_id: String },
+    /// Request cancellation of a persisted run.
+    RunCancel { run_id: String },
+    /// Resume/inspect a persisted run after interruption.
+    RunResume { run_id: String },
     /// Ingest arXiv PDFs.
     IngestArxiv {
         #[arg(long)]
@@ -88,6 +150,15 @@ enum Commands {
     IngestPdf {
         #[arg(long)]
         path: PathBuf,
+    },
+    /// Human review of extracted formulas in a chunks JSONL file.
+    ReviewFormulas {
+        #[arg(long)]
+        chunks: PathBuf,
+        #[arg(long)]
+        decision: Option<String>,
+        #[arg(long, default_value = "human")]
+        reviewer: String,
     },
     /// Upload the Veritas OWL ontology into Fuseki/Jena.
     UploadOntology {
@@ -150,16 +221,29 @@ async fn main() -> Result<()> {
         Commands::Deploy { models } => {
             print_logo();
             ensure_runtime_env()?;
+            validate_setup()?;
+            if models { gpu_validate()?; }
             let mut args = vec!["compose", "--env-file", ".veritas/runtime.env"];
             if models { args.extend(["--profile", "models", "--profile", "code-model", "--profile", "math-model"]); }
             args.extend(["up", "-d", "--build"]);
             run("docker", &args)
-        }
-        Commands::Prompt => {
-            print_logo();
-            println!("Veritas prompt mode. Use `veritas run <goal>` or `veritas plan <goal>` for now; interactive agent shell is enabled by setup state machine docs.");
-            Ok(())
-        }
+        },
+        Commands::E2eFake { keep_running } => {
+            if keep_running {
+                run("bash", &["-lc", "VERITAS_E2E_KEEP_RUNNING=1 scripts/e2e/full-fake-vllm-e2e.sh"])
+            } else {
+                run("bash", &["scripts/e2e/full-fake-vllm-e2e.sh"])
+            }
+        },
+        Commands::ValidateHost => run("bash", &["scripts/validate-host.sh"]),
+        Commands::ProductionAccept { live_vllm } => {
+            if live_vllm {
+                run("bash", &["-lc", "VERITAS_REQUIRE_LIVE_VLLM_VALIDATION=true scripts/production-acceptance.sh"])
+            } else {
+                run("bash", &["scripts/production-acceptance.sh"])
+            }
+        },
+        Commands::Prompt => prompt_shell(&http, &cli.api_url).await,
         Commands::Start {
             models,
             code_model,
@@ -167,6 +251,8 @@ async fn main() -> Result<()> {
         } => {
             print_logo();
             ensure_runtime_env()?;
+            validate_setup()?;
+            if models || code_model || math_model { gpu_validate()?; }
             let mut args = vec!["compose", "--env-file", ".veritas/runtime.env"];
             if models {
                 args.extend(["--profile", "models"]);
@@ -181,7 +267,7 @@ async fn main() -> Result<()> {
             run("docker", &args)?;
             print_start_success(&cli.api_url, models, code_model, math_model);
             Ok(())
-        }
+        },
         Commands::Up => { ensure_runtime_env()?; run("docker", &["compose", "--env-file", ".veritas/runtime.env", "up", "-d", "--build"]) },
         Commands::Down => run("docker", &["compose", "--env-file", ".veritas/runtime.env", "down"]),
         Commands::Health => print_response(
@@ -199,6 +285,39 @@ async fn main() -> Result<()> {
             "api.models",
         )
         .await,
+        Commands::GpuInspect => gpu_inspect(),
+        Commands::GpuValidate => gpu_validate(),
+        Commands::OpenSearchMapping => print_response(
+            http.get(format!("{}/opensearch/mapping", cli.api_url)).send().await,
+            "api.opensearch.mapping",
+        ).await,
+        Commands::OpenSearchMigrate { dry_run } => print_response(
+            http.post(format!("{}/opensearch/migrate", cli.api_url)).json(&json!({"dry_run": dry_run})).send().await,
+            "api.opensearch.migrate",
+        ).await,
+        Commands::OpenSearchStatus => print_response(
+            http.get(format!("{}/opensearch/status", cli.api_url)).send().await,
+            "api.opensearch.status",
+        ).await,
+        Commands::GraphList => print_response(
+            http.get(format!("{}/graphs", cli.api_url)).send().await,
+            "api.graphs",
+        ).await,
+        Commands::GraphFacts => print_response(
+            http.get(format!("{}/graph/facts", cli.api_url)).send().await,
+            "api.graph.facts",
+        ).await,
+        Commands::GraphDescribe { graph_uri } => print_response(
+            http.post(format!("{}/graph/describe", cli.api_url)).json(&json!({"graph_uri": graph_uri})).send().await,
+            "api.graph.describe",
+        ).await,
+        Commands::GraphUpload { path, graph_uri, replace } => {
+            let turtle = fs::read_to_string(&path).map_err(|error| anyhow!("failed to read Turtle file {:?}: {}", path, error))?;
+            print_response(
+                http.post(format!("{}/graph/upload", cli.api_url)).json(&json!({"graph_uri": graph_uri, "turtle": turtle, "replace": replace, "content_type": "text/turtle"})).send().await,
+                "api.graph.upload",
+            ).await
+        },
         Commands::Search { query, size, mode } => {
             print_response(
                 http.post(format!("{}/search", cli.api_url))
@@ -208,7 +327,7 @@ async fn main() -> Result<()> {
                 "api.search",
             )
             .await
-        }
+        },
         Commands::Sparql { query } => {
             print_response(
                 http.post(format!("{}/sparql", cli.api_url))
@@ -218,7 +337,7 @@ async fn main() -> Result<()> {
                 "api.sparql",
             )
             .await
-        }
+        },
         Commands::Plan { goal } | Commands::Ask { prompt: goal } => {
             print_response(
                 http.post(format!("{}/plan", cli.api_url))
@@ -228,7 +347,7 @@ async fn main() -> Result<()> {
                 "api.plan",
             )
             .await
-        }
+        },
         Commands::Chat { role, prompt } => {
             print_response(
                 http.post(format!("{}/llm/chat", cli.api_url))
@@ -238,7 +357,61 @@ async fn main() -> Result<()> {
                 "api.llm.chat",
             )
             .await
-        }
+        },
+        Commands::MathToCode { formula_id, formula_latex, prompt, language, max_retries } => {
+            let mut body = json!({"formula_id": formula_id, "formula_latex": formula_latex, "prompt": prompt, "language": language});
+            if let Some(retries) = max_retries { body["max_retries"] = json!(retries); }
+            let first = http.post(format!("{}/math-to-code", cli.api_url)).json(&body).send().await;
+            match first {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let value: Value = resp.json().await.unwrap_or_else(|_| json!({"ok": false, "error": "invalid json response"}));
+                    if status.as_u16() == 202 && value.get("status").and_then(Value::as_str) == Some("awaiting_human_checkpoint") {
+                        println!("\nVeritas requires human review before code generation.\n");
+                        println!("{}", serde_json::to_string_pretty(&value["checkpoint"]).unwrap_or_else(|_| value["checkpoint"].to_string()));
+                        let decision = prompt_default("Approve this representation-first math analysis? (approve/reject)", "approve")?;
+                        if decision.trim().eq_ignore_ascii_case("approve") {
+                            body["human_approved"] = json!(true);
+                            body["human_decision"] = json!({"decision": "approve", "reviewer": "cli-human"});
+                            print_response(http.post(format!("{}/math-to-code", cli.api_url)).json(&body).send().await, "api.math_to_code.approved").await
+                        } else {
+                            println!("Human rejected the math-to-code checkpoint. No code was generated.");
+                            Ok(())
+                        }
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()));
+                        Ok(())
+                    }
+                }
+                Err(error) => Err(anyhow!("api.math_to_code request failed: {}", error)),
+            }
+        },
+        Commands::RunStatus { run_id } => print_response(
+            http.get(format!("{}/status/{}", cli.api_url, run_id)).send().await,
+            "api.run.status",
+        ).await,
+        Commands::RunCancel { run_id } => print_response(
+            http.post(format!("{}/run/{}/cancel", cli.api_url, run_id)).send().await,
+            "api.run.cancel",
+        ).await,
+        Commands::RunResume { run_id } => print_response(
+            http.post(format!("{}/run/{}/resume", cli.api_url, run_id)).send().await,
+            "api.run.resume",
+        ).await,
+        Commands::ReviewFormulas { chunks, decision, reviewer } => {
+            let mut args = vec!["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "review-formulas", "--chunks"];
+            let chunks_str = chunks.to_string_lossy().to_string();
+            args.push(&chunks_str);
+            let decision_str;
+            if let Some(value) = decision {
+                args.push("--decision");
+                decision_str = value;
+                args.push(&decision_str);
+            }
+            args.push("--reviewer");
+            args.push(&reviewer);
+            run("docker", &args)
+        },
         Commands::IngestArxiv { query, max_results } => run(
             "docker",
             &[
@@ -277,7 +450,7 @@ async fn main() -> Result<()> {
                     &container_path,
                 ],
             )
-        }
+        },
         Commands::UploadOntology { path } => {
             let mut args = vec![
                 "compose",
@@ -298,7 +471,7 @@ async fn main() -> Result<()> {
                 args.push(&staged_path);
             }
             run("docker", &args)
-        }
+        },
         Commands::GenerateCode { prompt, language, max_retries } => {
             let mut body = json!({"goal": prompt, "language": language});
             if let Some(retries) = max_retries { body["max_retries"] = json!(retries); }
@@ -310,7 +483,7 @@ async fn main() -> Result<()> {
                 "api.run",
             )
             .await
-        }
+        },
         Commands::Run { goal, language, max_retries } => {
             let mut body = json!({"goal": goal, "language": language});
             if let Some(retries) = max_retries { body["max_retries"] = json!(retries); }
@@ -688,8 +861,18 @@ VERITAS_EMBEDDING_MODEL={embedding}
 VERITAS_EMBEDDING_NORMALIZE=true
 VERITAS_EMBEDDING_DEVICE=auto
 VERITAS_EMBEDDING_BATCH_SIZE=16
-VERITAS_OPENSEARCH_INDEX={opensearch_index}
+VERITAS_OPENSEARCH_INDEX={opensearch_index}-read
+VERITAS_OPENSEARCH_INDEX_BASE={opensearch_index}
+VERITAS_OPENSEARCH_READ_ALIAS={opensearch_index}-read
+VERITAS_OPENSEARCH_WRITE_ALIAS={opensearch_index}-write
+VERITAS_OPENSEARCH_VERSIONED_INDEX={opensearch_index}-v1
+VERITAS_OPENSEARCH_MAPPING_VERSION=v1
 VERITAS_OPENSEARCH_VECTOR_FIELD=embedding
+VERITAS_OPENSEARCH_VECTOR_DIMENSION=768
+VERITAS_GRAPH_ONTOLOGY_URI=urn:veritas:graph:ontology
+VERITAS_GRAPH_DOCUMENT_BASE_URI=urn:veritas:graph:document
+VERITAS_GRAPH_RUN_BASE_URI=urn:veritas:graph:run
+VERITAS_GRAPH_VALIDATION_BASE_URI=urn:veritas:graph:validation
 VERITAS_RUNS_DIR=/workspace/{project_dir}
 VERITAS_PROJECT_DIR={project_dir}
 VERITAS_ARCHITECTURE_STYLE={architecture_style}
@@ -701,6 +884,10 @@ VERITAS_USE_HIGHER_ORDER_FUNCTIONS={higher_order}
 VERITAS_ISOLATE_SIDE_EFFECT_BOUNDARIES={side_effect_boundaries}
 VERITAS_AGENT_MAX_RETRIES=2
 VERITAS_COMMAND_TIMEOUT_SECS=180
+VERITAS_COMMAND_RUNNER=local
+VERITAS_SANDBOX_IMAGE=veritas-sandbox-rust:latest
+VERITAS_SHACL_ENFORCE=false
+VERITAS_REMOTE_MODEL_API_KEY_ENV=VERITAS_REMOTE_MODEL_API_KEY
 VERITAS_SETUP_UPLOAD_DOCS={upload_docs}
 VERITAS_SETUP_DOCS_PATH={docs_path}
 VERITAS_SETUP_UPLOAD_ONTOLOGY={upload_ontology}
@@ -799,10 +986,183 @@ fn validate_setup() -> Result<()> {
         return Err(anyhow!("Veritas setup is incomplete. Run `veritas init` first."));
     }
     let cfg = fs::read_to_string(".veritas/config.yaml")?;
-    if !cfg.contains("models:") || !cfg.contains("services:") {
-        return Err(anyhow!(".veritas/config.yaml is missing required models/services sections."));
+    if !cfg.contains("models:") || !cfg.contains("services:") || !cfg.contains("hardware:") {
+        return Err(anyhow!(".veritas/config.yaml is missing required models/services/hardware sections."));
+    }
+    let env_text = fs::read_to_string(".veritas/runtime.env")?;
+    let required = [
+        "VERITAS_PLANNER_MODEL",
+        "VERITAS_CODE_MODEL",
+        "VERITAS_MATH_MODEL",
+        "VERITAS_OPENSEARCH_INDEX",
+        "VERITAS_FUSEKI_DATASET",
+        "VERITAS_GRAPH_ONTOLOGY_URI",
+        "VERITAS_PROJECT_DIR",
+    ];
+    let missing: Vec<&str> = required.iter().copied().filter(|key| runtime_env_value(&env_text, key).is_none()).collect();
+    if !missing.is_empty() {
+        return Err(anyhow!(".veritas/runtime.env is missing required keys: {}", missing.join(", ")));
     }
     println!("✓ Veritas setup files are present and structurally valid.");
+    Ok(())
+}
+
+
+fn gpu_inspect() -> Result<()> {
+    println!("GPU Inventory");
+    println!("─────────────");
+    match Command::new("nvidia-smi").args(["--query-gpu=index,name,memory.total,memory.free,driver_version", "--format=csv,noheader,nounits"]).output() {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            if text.trim().is_empty() { println!("No NVIDIA GPUs reported by nvidia-smi."); } else { println!("{text}"); }
+            Ok(())
+        }
+        Ok(output) => {
+            println!("nvidia-smi returned non-zero status. stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+            println!("Veritas can still run in thin-cpu or remote-model mode.");
+            Ok(())
+        }
+        Err(error) => {
+            println!("nvidia-smi is unavailable: {error}");
+            println!("Veritas can still run in thin-cpu, ingestion-only, query-only, or remote-model mode.");
+            Ok(())
+        }
+    }
+}
+
+fn gpu_validate() -> Result<()> {
+    ensure_runtime_env()?;
+    let env_text = fs::read_to_string(".veritas/runtime.env")?;
+    let gpu_count = runtime_env_value(&env_text, "VERITAS_GPU_COUNT").unwrap_or_else(|| "0".to_string()).parse::<usize>().unwrap_or(0);
+    let strict = runtime_env_value(&env_text, "VERITAS_STRICT_GPU_VALIDATE").map(|v| truthy(&v)).unwrap_or(false);
+    let actual_inventory = detect_gpu_inventory();
+    let actual_count = actual_inventory.as_ref().map(|v| v.len()).unwrap_or(0);
+    let roles = [
+        ("planner", "VERITAS_PLANNER_GPU_DEVICE_IDS", "VERITAS_PLANNER_TENSOR_PARALLEL_SIZE", "VERITAS_PLANNER_PIPELINE_PARALLEL_SIZE", "VERITAS_PLANNER_GPU_MEMORY_UTILIZATION", "VERITAS_PLANNER_MODEL"),
+        ("code", "VERITAS_CODE_GPU_DEVICE_IDS", "VERITAS_CODE_TENSOR_PARALLEL_SIZE", "VERITAS_CODE_PIPELINE_PARALLEL_SIZE", "VERITAS_CODE_GPU_MEMORY_UTILIZATION", "VERITAS_CODE_MODEL"),
+        ("math", "VERITAS_MATH_GPU_DEVICE_IDS", "VERITAS_MATH_TENSOR_PARALLEL_SIZE", "VERITAS_MATH_PIPELINE_PARALLEL_SIZE", "VERITAS_MATH_GPU_MEMORY_UTILIZATION", "VERITAS_MATH_MODEL"),
+    ];
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    if gpu_count > 0 && actual_inventory.is_none() {
+        let message = "VERITAS_GPU_COUNT is greater than zero, but nvidia-smi is unavailable on this host.".to_string();
+        if strict { errors.push(message); } else { warnings.push(format!("{message} Live GPU proof will occur when Docker/vLLM starts.")); }
+    }
+    if actual_count > 0 && gpu_count > actual_count {
+        errors.push(format!("Declared VERITAS_GPU_COUNT={gpu_count} exceeds detected NVIDIA GPU count={actual_count}."));
+    }
+    for (role, ids_key, tp_key, pp_key, util_key, model_key) in roles {
+        let ids_raw = runtime_env_value(&env_text, ids_key).unwrap_or_else(|| "0".to_string());
+        let ids = parse_gpu_ids(&ids_raw);
+        let tp = runtime_env_value(&env_text, tp_key).unwrap_or_else(|| "1".to_string()).parse::<usize>().unwrap_or(1);
+        let pp = runtime_env_value(&env_text, pp_key).unwrap_or_else(|| "1".to_string()).parse::<usize>().unwrap_or(1);
+        let util = runtime_env_value(&env_text, util_key).unwrap_or_else(|| "0.60".to_string()).parse::<f64>().unwrap_or(0.60);
+        let model = runtime_env_value(&env_text, model_key).unwrap_or_default();
+        if gpu_count == 0 {
+            if tp > 1 || pp > 1 { errors.push(format!("{role} requests tensor/pipeline parallelism without declared GPUs.")); }
+            continue;
+        }
+        if ids.is_empty() { errors.push(format!("{role} has no GPU IDs configured in {ids_key}.")); }
+        if tp == 0 { errors.push(format!("{role} tensor_parallel_size must be >= 1.")); }
+        if pp == 0 { errors.push(format!("{role} pipeline_parallel_size must be >= 1.")); }
+        if tp > ids.len() { errors.push(format!("{role} tensor_parallel_size={tp} exceeds assigned GPU count {} ({ids_raw}).", ids.len())); }
+        if !(0.05..=0.98).contains(&util) { errors.push(format!("{role} GPU memory utilization {util} must be between 0.05 and 0.98.")); }
+        for id in &ids {
+            if *id >= gpu_count { errors.push(format!("{role} GPU id {id} is outside declared range 0..{}.", gpu_count.saturating_sub(1))); }
+            if actual_count > 0 && *id >= actual_count { errors.push(format!("{role} GPU id {id} is outside detected range 0..{}.", actual_count.saturating_sub(1))); }
+        }
+        if let Some(inventory) = actual_inventory.as_ref() {
+            let available_gb = assigned_free_memory_gb(inventory, &ids) * util;
+            let hint_gb = model_vram_hint_gb(&model);
+            if hint_gb > 0.0 && available_gb > 0.0 && hint_gb > available_gb {
+                warnings.push(format!("{role} model {model} may need ~{hint_gb:.1}GB VRAM, but assigned usable free memory is ~{available_gb:.1}GB after utilization={util}. Consider smaller model, quantization, lower max length, tensor parallelism, or remote fallback."));
+            }
+        }
+    }
+    if errors.is_empty() {
+        println!("✓ GPU/vLLM routing config is structurally valid for declared GPU count {gpu_count}.");
+        if actual_count > 0 { println!("✓ Detected {actual_count} NVIDIA GPU(s) through nvidia-smi."); }
+        for warning in warnings { println!("⚠ {warning}"); }
+        println!("Next proof gate: run `scripts/e2e/live-vllm-smoke.sh` on the GPU host after models are downloaded.");
+        Ok(())
+    } else {
+        for warning in warnings { eprintln!("⚠ {warning}"); }
+        for error in &errors { eprintln!("✗ {error}"); }
+        Err(anyhow!("GPU/vLLM routing config is invalid; fix `.veritas/runtime.env` or rerun `veritas init`."))
+    }
+}
+
+fn parse_gpu_ids(value: &str) -> Vec<usize> {
+    value.split(',').filter_map(|part| part.trim().parse::<usize>().ok()).collect()
+}
+
+fn detect_gpu_inventory() -> Option<Vec<(usize, f64)>> {
+    let output = Command::new("nvidia-smi")
+        .args(["--query-gpu=index,memory.free", "--format=csv,noheader,nounits"])
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut inventory = Vec::new();
+    for line in text.lines() {
+        let mut parts = line.split(',');
+        let id = parts.next().and_then(|v| v.trim().parse::<usize>().ok());
+        let free_mb = parts.next().and_then(|v| v.trim().parse::<f64>().ok());
+        if let (Some(id), Some(free_mb)) = (id, free_mb) { inventory.push((id, free_mb / 1024.0)); }
+    }
+    Some(inventory)
+}
+
+fn assigned_free_memory_gb(inventory: &[(usize, f64)], ids: &[usize]) -> f64 {
+    ids.iter().filter_map(|id| inventory.iter().find(|(gpu_id, _)| gpu_id == id).map(|(_, free)| *free)).sum()
+}
+
+fn model_vram_hint_gb(model: &str) -> f64 {
+    let lower = model.to_ascii_lowercase();
+    if lower.contains("32b") { 64.0 }
+    else if lower.contains("14b") { 32.0 }
+    else if lower.contains("7b") { 18.0 }
+    else if lower.contains("deepseek-coder-v2-lite") { 32.0 }
+    else { 0.0 }
+}
+
+fn runtime_env_value(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| line.strip_prefix(&format!("{key}=")).map(|v| v.trim().to_string()))
+}
+
+async fn prompt_shell(http: &Client, api_url: &str) -> Result<()> {
+    print_logo();
+    println!("Interactive Veritas shell. Commands: plan <goal>, run <goal>, math <formula/prompt>, models, ready, exit");
+    loop {
+        print!("veritas > ");
+        io::stdout().flush()?;
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if matches!(line, "exit" | "quit" | "q") { break; }
+        if line == "models" {
+            print_response(http.get(format!("{}/models", api_url)).send().await, "api.models").await?;
+            continue;
+        }
+        if line == "ready" {
+            print_response(http.get(format!("{}/ready", api_url)).send().await, "api.ready").await?;
+            continue;
+        }
+        if let Some(goal) = line.strip_prefix("plan ") {
+            print_response(http.post(format!("{}/plan", api_url)).json(&json!({"goal": goal})).send().await, "api.plan").await?;
+            continue;
+        }
+        if let Some(goal) = line.strip_prefix("run ") {
+            print_response(http.post(format!("{}/run", api_url)).json(&json!({"goal": goal, "language": "rust"})).send().await, "api.run").await?;
+            continue;
+        }
+        if let Some(formula) = line.strip_prefix("math ") {
+            print_response(http.post(format!("{}/math-to-code", api_url)).json(&json!({"formula_latex": formula, "language": "rust"})).send().await, "api.math_to_code").await?;
+            continue;
+        }
+        println!("Unknown command. Try: plan <goal>, run <goal>, math <formula>, models, ready, exit");
+    }
     Ok(())
 }
 

@@ -523,3 +523,166 @@ docker compose --env-file .veritas/runtime.env run --rm cli run "Implement the i
 ### Artifact status rule
 
 No generated artifact may be marked `production_candidate_validated` unless compile/test validation actually passes. Legacy Python scaffold code generation is marked `generated_unvalidated` and is not a production path.
+
+## Production-hardening pass: current implementation additions
+
+This repository now includes a source-level hardening layer for the 100% compliance plan:
+
+- Role-specific structured-output routing for planner, codegen, math, repair, and report contracts.
+- `/math-to-code` API endpoint and `veritas math-to-code` CLI command.
+- `/opensearch/mapping` and `/opensearch/migrate` API endpoints plus CLI commands for Rust-owned mapping visibility and index creation.
+- Persisted run inspection endpoints: `/status/:run_id`, `/run/:run_id/resume`, and `/run/:run_id/cancel` with CLI equivalents.
+- Automatic SHACL gate before code generation; set `VERITAS_SHACL_ENFORCE=true` to block runs on critical SHACL findings.
+- Optional Docker sandbox command runner; set `VERITAS_COMMAND_RUNNER=sandbox` and build `docker/sandbox/rust.Dockerfile` as `veritas-sandbox-rust:latest`.
+- Formula image metadata pipeline with optional PyMuPDF rasterization when page/bbox data exists, plus explicit fallback status when it does not.
+- Fake vLLM server and Docker E2E profile for CI-style control-plane validation without downloading full model weights.
+
+### Pass 1 control-plane safety
+
+The API control plane now uses a provider abstraction instead of direct helper-only model calls:
+
+```text
+apps/api/src/providers.rs
+apps/api/src/schemas.rs
+```
+
+The provider layer defines `ModelProvider`, `LocalVllmProvider`, `RemoteOpenAICompatibleProvider`, and `ProviderRouter`. The router is local-vLLM-first, supports explicitly configured OpenAI-compatible fallback, classifies provider failures, annotates provider routes, and converts failures into structured API remediation messages. The schema layer loads role-specific planner, codegen, math, repair, and run-report JSON schemas from `schemas/*.schema.json` and passes the selected schema to vLLM structured-output guidance for each role.
+
+This completes the planned Pass 1 source work: model outputs are role-typed, schema-gated, and routed through a provider abstraction before Veritas can execute planner-selected tools or write generated code.
+
+### New CLI examples
+
+```bash
+veritas opensearch-mapping
+veritas opensearch-migrate
+veritas math-to-code --formula-latex 'L(\theta)=\mathbb{E}_{q_\theta(z)}[\log p(x,z)-\log q_\theta(z)]' --language rust
+veritas run-status <run_id>
+veritas run-cancel <run_id>
+veritas run-resume <run_id>
+veritas gpu-inspect
+veritas gpu-validate
+veritas prompt
+```
+
+### Fake-vLLM E2E profile
+
+The fake-vLLM profile is intended to validate orchestration behavior without requiring Qwen/OLMo model downloads:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+scripts/e2e/validate-services.sh
+scripts/e2e/run-fixture.sh
+```
+
+This proves the API/CLI control plane path; live production certification still requires a host run with real vLLM models, OpenSearch, Fuseki, SHACL, and the sandbox image.
+
+
+## Pass 2 completion update — execution safety
+
+Pass 2 is now source-complete for the planned execution-safety scope. Veritas now persists every run as a durable workspace with `request.json`, `state.json`, `events.jsonl`, `plan_envelope.json`, `tool_outputs.json`, `automatic_shacl_report.json`, generated code package snapshots, command audit logs, validation result snapshots, retry history, and `final_report.json`. The API now uses an atomic `run.lock` file with stale-lock protection to prevent two workers from advancing the same run concurrently. `/status/:run_id` reads persisted state from disk instead of relying only on in-memory recent runs. `/run/:run_id/resume` now reloads `request.json`, reuses persisted plan/tool/SHACL artifacts when available, and continues the bounded code-generation/validation loop instead of returning a placeholder. `/run/:run_id/cancel` writes a cancellation marker and records a cancel event that the run loop checks between generation and validation steps. Command execution now writes `command_audit.jsonl` in addition to structured validation results.
+
+This completes the source-level Pass 2 target: generated code execution has a safer audit path, run state is durable, cancellation is observable, and resume semantics are implemented around persisted artifacts and run locking. Live validation still requires Cargo and Docker on a host machine.
+
+## Pass 3: Retrieval and ontology hardening
+
+The current source tree includes the Pass 3 hardening layer. OpenSearch is now treated as a versioned FAISS/HNSW evidence memory with stable aliases rather than a single mutable index. Use:
+
+```bash
+veritas opensearch-status
+veritas opensearch-mapping
+veritas opensearch-migrate --dry-run
+veritas opensearch-migrate
+```
+
+The migration endpoint creates a versioned index such as `veritas-papers-v1`, attaches a read alias such as `veritas-papers-read`, and attaches a write alias such as `veritas-papers-write`. This allows future schema migrations without destructive changes to existing evidence memory.
+
+Fuseki is now handled as a named-graph system. Veritas separates ontology TBox data from project ABox data:
+
+```text
+urn:veritas:graph:ontology              ontology classes/properties/axioms
+urn:veritas:graph:document:<hash>       source documents, APA citations, chunks, formulas
+urn:veritas:graph:run:<run_id>          plans, tasks, generated files, model routes
+urn:veritas:graph:validation:<run_id>   command results, verification status, SHACL findings
+```
+
+PDF binaries are not uploaded into Fuseki. They remain in file/object storage. Fuseki stores semantic facts and links so Veritas can reason over evidence, formulas, invariants, risks, plans, code, validation, and build artifacts.
+
+Graph commands:
+
+```bash
+veritas graph-list
+veritas graph-facts
+veritas graph-describe urn:veritas:graph:ontology
+veritas graph-upload --path ./facts.ttl --graph-uri urn:veritas:graph:document:example
+```
+
+Planner grounding now includes a SPARQL fact summary generated from the production query pack. Veritas asks Fuseki for formulas without invariants, risks without mitigation, plans without validation, generated source without validation, builds without tests, loops without termination, objectives blocked by unverified assumptions, deployment units without observability, and mathematical claims without transfer tests. The planner receives these facts alongside OpenSearch evidence so it can reason about obligations rather than only retrieved text.
+
+## Pass 4: Mathematical research workflow hardening
+
+Veritas now treats formulas as first-class `SymbolicShadow` artifacts. Ingestion merges regex/Markdown formulas with Docling visual formula candidates, preserves page/bounding-box metadata when available, rasterizes formula images with PyMuPDF when possible, and runs a pluggable LaTeX OCR provider through `VERITAS_LATEX_OCR_PROVIDER`.
+
+Supported OCR modes:
+
+```text
+heuristic   deterministic CI-safe mode; preserves existing LaTeX
+command     runs VERITAS_LATEX_OCR_COMMAND with {image}
+http        POSTs image_base64 to VERITAS_LATEX_OCR_URL
+none        disables OCR and records the decision
+```
+
+The math-to-code endpoint now enforces representation-first analysis before code generation. It requires the math model to produce surface phenomenon, representation map, primitive ontology, transformation space, constraints, invariants, compression fidelity, recursive closure, generative necessity, symbolic shadows, transfer tests, risks, validation requirements, and status. This follows the Veritas rule: **formulas are symbolic shadows, not truth by themselves**.
+
+Human review commands:
+
+```bash
+veritas review-formulas --chunks data/chunks/<paper>.chunks.jsonl
+veritas math-to-code --formula-latex 'E=mc^2' --language rust
+```
+
+If the configured human-loop policy requires review, `veritas math-to-code` displays the checkpoint and asks for approval before code generation proceeds.
+
+## Pass 5 — Deployment and production proof
+
+Pass 5 turns the previous source-level implementation into an auditable production-proof workflow. The repository now includes a fake-vLLM Docker E2E profile so maintainers can validate the control plane without downloading large models, plus strict host-validation scripts for Rust, Docker Compose, OpenSearch, Fuseki, SHACL, ingestion, planning, running, and report validation.
+
+### Fake-vLLM E2E proof
+
+Run this on any Docker host:
+
+```bash
+scripts/e2e/full-fake-vllm-e2e.sh
+```
+
+The script writes `.veritas/runtime.env`, starts OpenSearch, Fuseki, SHACL, API, fake vLLM planner/code/math services, and a fake embedding service. It then runs OpenSearch migration, uploads the ontology into the ontology named graph, ingests `tests/fixtures/sample_math_paper.pdf`, runs `/plan`, runs `/run`, and verifies that the final report contains changed files, validation commands, and a validated artifact status.
+
+### Production host validation
+
+Run this on a host with Rust, Docker Compose, and the expected runtime tooling:
+
+```bash
+scripts/validate-host.sh
+```
+
+This runs Python compilation/tests, Rust formatting/check/test/clippy, Docker Compose config validation, GPU layout validation, and fake-vLLM Docker E2E. It also regenerates `validation-last.json` and updates `AUDIT.md`.
+
+### Live vLLM proof
+
+On a GPU host after real models are downloaded and running, require live vLLM validation:
+
+```bash
+VERITAS_REQUIRE_LIVE_VLLM_VALIDATION=true scripts/validate-host.sh
+```
+
+This checks the exposed vLLM `/v1/models` endpoint for planner, code, and math roles. The fake-vLLM E2E proves orchestration; live vLLM proof validates real model serving.
+
+### CLI shortcuts
+
+```bash
+veritas e2e-fake
+veritas validate-host
+veritas production-accept --live-vllm
+veritas gpu-validate
+```
+
+The deployment proof is intentionally strict: skipped Cargo, Docker, GPU, or live vLLM checks are not counted as production-certified results.
