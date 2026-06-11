@@ -2,7 +2,8 @@
 
 **Math-heavy evidence-backed research and development software engineering agent.**
 
-[Download research paper here](https://github.com/daddydrac/veritas/blob/main/veritas_paper.pdf)
+  - [Download research paper here](https://github.com/daddydrac/veritas/blob/main/veritas_paper.pdf)
+  - [See FEATURES for diagrams, data flow, and features of the software/architecture](https://github.com/daddydrac/veritas/blob/main/FEATURES.md)
 
 ![](./assets/veritas.png)
 
