@@ -1,0 +1,363 @@
+{
+  "ok": true,
+  "summary": {
+    "total": 67,
+    "failed": 0,
+    "unavailable": 2
+  },
+  "checks": [
+    {
+      "name": "file:docker-compose.yml",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/docker-compose.yml"
+    },
+    {
+      "name": "file:schemas/planner.schema.json",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/schemas/planner.schema.json"
+    },
+    {
+      "name": "file:schemas/codegen.schema.json",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/schemas/codegen.schema.json"
+    },
+    {
+      "name": "file:schemas/math_reasoning.schema.json",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/schemas/math_reasoning.schema.json"
+    },
+    {
+      "name": "file:schemas/human_checkpoint.schema.json",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/schemas/human_checkpoint.schema.json"
+    },
+    {
+      "name": "file:schemas/run_report.schema.json",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/schemas/run_report.schema.json"
+    },
+    {
+      "name": "file:packages/ontology/shacl/veritas-core.shacl.ttl",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/packages/ontology/shacl/veritas-core.shacl.ttl"
+    },
+    {
+      "name": "file:packages/ontology/shacl/veritas-math.shacl.ttl",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/packages/ontology/shacl/veritas-math.shacl.ttl"
+    },
+    {
+      "name": "file:services/shacl/Dockerfile",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/shacl/Dockerfile"
+    },
+    {
+      "name": "file:apps/api/src/main.rs",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/apps/api/src/main.rs"
+    },
+    {
+      "name": "file:apps/api/src/providers.rs",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/apps/api/src/providers.rs"
+    },
+    {
+      "name": "file:apps/api/src/schemas.rs",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/apps/api/src/schemas.rs"
+    },
+    {
+      "name": "file:apps/cli/src/main.rs",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/apps/cli/src/main.rs"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/cli.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/cli.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/docling_pdf.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/docling_pdf.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/formulas.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/formulas.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/formula_images.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/formula_images.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/latex_ocr.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/latex_ocr.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/human_review.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/human_review.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/chunking.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/chunking.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/sinks.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/sinks.py"
+    },
+    {
+      "name": "file:packages/ontology/veritas.owl",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/packages/ontology/veritas.owl"
+    },
+    {
+      "name": "file:packages/ontology/queries/evidence_chunks.sparql",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/packages/ontology/queries/evidence_chunks.sparql"
+    },
+    {
+      "name": "file:packages/ontology/queries/formula_traceability.sparql",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/packages/ontology/queries/formula_traceability.sparql"
+    },
+    {
+      "name": "file:docs/architecture/VERITAS_SPEC.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/docs/architecture/VERITAS_SPEC.md"
+    },
+    {
+      "name": "file:docs/architecture/END_TO_END_WORKFLOW.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/docs/architecture/END_TO_END_WORKFLOW.md"
+    },
+    {
+      "name": "file:README.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/README.md"
+    },
+    {
+      "name": "file:QUICKSTART.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/QUICKSTART.md"
+    },
+    {
+      "name": "file:docs/MODELS.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/docs/MODELS.md"
+    },
+    {
+      "name": "file:MODEL_SERVING_UPDATE.md",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/MODEL_SERVING_UPDATE.md"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/planning.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/planning.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/codegen.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/codegen.py"
+    },
+    {
+      "name": "file:services/ingestion/veritas_ingest/ontology.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/services/ingestion/veritas_ingest/ontology.py"
+    },
+    {
+      "name": "file:docker-compose.e2e.yml",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/docker-compose.e2e.yml"
+    },
+    {
+      "name": "file:tests/fakes/fake_vllm_server.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/tests/fakes/fake_vllm_server.py"
+    },
+    {
+      "name": "file:tests/fakes/fake_embedding_server.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/tests/fakes/fake_embedding_server.py"
+    },
+    {
+      "name": "file:tests/fakes/Dockerfile.embedding",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/tests/fakes/Dockerfile.embedding"
+    },
+    {
+      "name": "file:tests/fixtures/sample_math_paper.pdf",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/tests/fixtures/sample_math_paper.pdf"
+    },
+    {
+      "name": "file:scripts/e2e/write-fake-runtime-env.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/write-fake-runtime-env.sh"
+    },
+    {
+      "name": "file:scripts/e2e/wait-ready.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/wait-ready.sh"
+    },
+    {
+      "name": "file:scripts/e2e/validate-services.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/validate-services.sh"
+    },
+    {
+      "name": "file:scripts/e2e/upload-ontology.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/upload-ontology.sh"
+    },
+    {
+      "name": "file:scripts/e2e/ingest-fixture.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/ingest-fixture.sh"
+    },
+    {
+      "name": "file:scripts/e2e/plan-fixture.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/plan-fixture.sh"
+    },
+    {
+      "name": "file:scripts/e2e/run-fixture.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/run-fixture.sh"
+    },
+    {
+      "name": "file:scripts/e2e/assert-e2e-result.py",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/assert-e2e-result.py"
+    },
+    {
+      "name": "file:scripts/e2e/full-fake-vllm-e2e.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/full-fake-vllm-e2e.sh"
+    },
+    {
+      "name": "file:scripts/e2e/gpu-validation.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/gpu-validation.sh"
+    },
+    {
+      "name": "file:scripts/e2e/live-vllm-smoke.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/e2e/live-vllm-smoke.sh"
+    },
+    {
+      "name": "file:scripts/production-acceptance.sh",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/scripts/production-acceptance.sh"
+    },
+    {
+      "name": "file:.github/workflows/python.yml",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/.github/workflows/python.yml"
+    },
+    {
+      "name": "file:.github/workflows/rust.yml",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/.github/workflows/rust.yml"
+    },
+    {
+      "name": "file:.github/workflows/docker-e2e.yml",
+      "ok": true,
+      "details": "/mnt/data/veritas_pass5_work/veritas_work/.github/workflows/docker-e2e.yml"
+    },
+    {
+      "name": "yaml.parse",
+      "ok": true
+    },
+    {
+      "name": "formula.extraction",
+      "ok": true,
+      "details": [
+        "E=mc^2",
+        "x_i = y^2"
+      ]
+    },
+    {
+      "name": "chunk.formula_boundary",
+      "ok": true,
+      "details": {
+        "chunks": 3,
+        "formulas": 1
+      }
+    },
+    {
+      "name": "rdf.turtle_parse",
+      "ok": true
+    },
+    {
+      "name": "architecture.no_unused_external_vector_db",
+      "ok": true,
+      "details": []
+    },
+    {
+      "name": "configuration.no_env_example",
+      "ok": true,
+      "details": "configuration is generated by `veritas init` into .veritas/runtime.env"
+    },
+    {
+      "name": "api.autonomous_run",
+      "ok": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "pass1.provider_abstraction",
+      "ok": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "pass2.execution_safety",
+      "ok": true,
+      "details": {
+        "missing": [],
+        "forbidden_present": []
+      }
+    },
+    {
+      "name": "pass3.retrieval_ontology_hardening",
+      "ok": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "pass4.mathematical_research_workflow",
+      "ok": true,
+      "details": {
+        "missing": [],
+        "missing_schema": []
+      }
+    },
+    {
+      "name": "pass5.deployment_production_proof",
+      "ok": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "cargo.check",
+      "ok": null,
+      "details": "command unavailable in this environment"
+    },
+    {
+      "name": "docker.compose.config",
+      "ok": null,
+      "details": "command unavailable in this environment"
+    }
+  ]
+}
