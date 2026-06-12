@@ -101,6 +101,30 @@ def _guess_latex_from_filename(image: Path) -> str:
     return ""
 
 
+
+def _parse_latex_payload(payload_text: str, *, default_confidence: float) -> tuple[str, float, str]:
+    """Parse OCR output from either plain text or JSON.
+
+    External OCR commands/services commonly return either raw LaTeX or a JSON
+    object such as {"latex": "...", "confidence": 0.91}.  Supporting both
+    formats keeps provider integration simple and testable.
+    """
+
+    payload_text = payload_text.strip()
+    if not payload_text:
+        return "", 0.0, ""
+    try:
+        payload = json.loads(payload_text)
+        if isinstance(payload, dict):
+            latex = normalize_latex(str(payload.get("latex") or payload.get("text") or ""))
+            confidence = float(payload.get("confidence", default_confidence if latex else 0.0) or 0.0)
+            message = str(payload.get("message") or "")
+            return latex, confidence, message
+    except Exception:
+        pass
+    return normalize_latex(payload_text), default_confidence, ""
+
+
 def _ocr_with_command(image: Path, existing: str) -> LatexOcrResult:
     command_template = os.getenv("VERITAS_LATEX_OCR_COMMAND", "").strip()
     if not command_template:
@@ -114,8 +138,9 @@ def _ocr_with_command(image: Path, existing: str) -> LatexOcrResult:
         return LatexOcrResult(existing, "command_failed_before_response", "command", 0.0, str(exc))
     if result.returncode != 0:
         return LatexOcrResult(existing, "command_nonzero_exit", "command", 0.0, result.stderr[-500:])
-    latex = normalize_latex(result.stdout.strip())
-    return LatexOcrResult(latex or existing, "ocr_complete" if latex else "ocr_empty", "command", 0.85 if latex else 0.0)
+    payload_text = result.stdout.strip()
+    latex, confidence, message = _parse_latex_payload(payload_text, default_confidence=0.85)
+    return LatexOcrResult(latex or existing, "ocr_complete" if latex else "ocr_empty", "command", confidence if latex else 0.0, message)
 
 
 def _ocr_with_http(image: Path, existing: str) -> LatexOcrResult:

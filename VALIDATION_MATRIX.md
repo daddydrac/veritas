@@ -1,5 +1,20 @@
 # Veritas Production Validation Matrix
 
+
+## Phase 0 — Packaging, Validation, and Scoring Cleanup
+
+This phase separates source/mocked acceptance from live host acceptance. Cargo, Docker Compose E2E, and live vLLM/GPU smoke validation remain host-validation dimensions and are not treated as failed in source/mocked acceptance when those tools are unavailable.
+
+| Capability | Source/mocked acceptance | Live host acceptance | Notes |
+|---|---:|---:|---|
+| Shell scripts preserve executable bits | implemented | n/a | `scripts/check-packaging.sh` fails if any `scripts/**/*.sh` file is not executable. |
+| CI workflow definitions | implemented | pending remote CI | Python, Rust, and Docker fake-vLLM E2E workflow files are present under `.github/workflows/`. |
+| Validation script robustness | implemented | n/a | `scripts/validate-spec.py` reports missing files as structured failed checks instead of crashing during Pass 5 workflow inspection. |
+| Acceptance profiles | implemented | pending host run | `scripts/production-acceptance.sh --profile source-mocked` performs mocked/source acceptance; production GPU profiles require live vLLM smoke. |
+| Host validation summary | implemented | pending host run | `scripts/validate-host.sh` writes `data/e2e/host-validation-summary.json` with skipped/passed step details. |
+| Release packaging | implemented | n/a | `scripts/package-release.sh` runs packaging checks and creates ZIPs while preserving executable bits. |
+
+
 | Capability | Source implemented | Python tests | Rust tests | Docker/live validated | Notes |
 |---|---:|---:|---:|---:|---|
 | CLI setup writes `.veritas` config | yes | partial | not run | not run | Cargo unavailable here. |
@@ -57,3 +72,109 @@
 | Host validation script | implemented | source tests | pending host run |
 | Production acceptance script | implemented | source tests | pending host run |
 | GitHub Actions CI definitions | implemented | source tests | pending remote CI |
+## Phase 0 — Scoped acceptance and host-validation boundary
+
+This repository now separates **source/mocked acceptance** from **live host acceptance** so the validation matrix does not overstate unexecuted host-only checks.
+
+| Check | Current scoped status | Meaning |
+|---|---|---|
+| `cargo.check` | `host_validation_pending` | Rust compile/test remains a host validation item and is intentionally excluded from this sandbox/source acceptance score. |
+| `docker.compose.config` | `host_validation_pending` | Docker Compose validation remains a host validation item and is intentionally excluded from this sandbox/source acceptance score. |
+| `live_vllm_smoke` | `host_validation_pending` | Live vLLM/GPU validation remains a host validation item and is intentionally excluded from this sandbox/source acceptance score. |
+| source/mocked acceptance | active | Python tests, schema/source validators, fake-vLLM harness files, packaging checks, and documentation checks are in scope. |
+| live host acceptance | pending host run | Cargo, Docker Compose, fake-vLLM Docker execution, live OpenSearch/Fuseki/SHACL, and live vLLM are validated only on a proper host. |
+
+Phase 0 target: all non-host validation checks must pass locally, every shell script must be executable, CI workflow files must be present, and `scripts/validate-spec.py` must report structured failures rather than crashing.
+
+## Phase 1 — Provider Abstraction and Structured-Output Enforcement
+
+| Capability | Source/mocked acceptance | Live host acceptance | Notes |
+|---|---:|---:|---|
+| Full JSON Schema validation | implemented | n/a | `apps/api/src/schemas.rs` validates outputs with the Rust `jsonschema` crate before domain-specific checks run. |
+| Planner schema contract | implemented | pending live vLLM | Planner output must pass `schemas/planner.schema.json`, including allowed tool enums and non-empty steps. |
+| Codegen schema contract | implemented | pending live vLLM | Codegen output must include package name, language, file path/content pairs, and commands. |
+| Math reasoning schema contract | implemented | pending live vLLM | Math output must preserve the representation-first fields from the Veritas math workflow. |
+| Provider health | implemented | pending live vLLM | Local vLLM health checks call `/v1/models` and verify the configured served model. |
+| Provider retry/backoff | implemented | pending live vLLM | Retry policy is configurable through provider retry environment variables. |
+| Provider circuit breaker | implemented | pending live vLLM | Repeated retryable failures open per-provider/per-role circuits. |
+| Remote fallback controls | implemented | pending configured remote endpoint | Remote fallback is explicit and supports per-role model overrides. |
+| Fake-vLLM structured-output failures | implemented | n/a | Fake vLLM can emit invalid JSON or unknown planner tools for schema tests. |
+
+## Phase 2 — Source-Mocked Control-Plane E2E Proof
+
+This phase keeps Cargo, Docker Compose execution, and live vLLM/GPU validation outside the scoped sandbox acceptance, but adds a runnable source/mocked E2E proof that exercises the Veritas control-plane contracts with schema-valid fake planner, math, codegen, repair, command-audit, and final-report artifacts.
+
+| Capability | Source/mocked acceptance | Live host acceptance | Notes |
+|---|---:|---:|---|
+| Source-mocked control-plane E2E | implemented | n/a | `scripts/e2e/source-mocked-control-plane-e2e.sh` creates a run workspace, writes request/state/events, validates planner/math/codegen/repair/run-report schemas, simulates a failed validation, repairs it, and emits a validated final report. |
+| Final report schema proof | implemented | n/a | The mocked run validates `final_report.json` against `schemas/run_report.schema.json` and reuses `scripts/e2e/assert-e2e-result.py`. |
+| Provider/structured-output mock proof | implemented | pending live vLLM | The source E2E uses schema-valid fake outputs and keeps live vLLM validation as a separate host acceptance concern. |
+| CI source E2E hook | implemented | pending remote CI | `.github/workflows/python.yml` now runs the source-mocked control-plane E2E after Python tests. |
+| Host validator source E2E step | implemented | pending host run | `scripts/validate-host.sh` runs the source-mocked E2E before optional Cargo/Docker/live vLLM gates. |
+
+Phase 2 increases source/mocked confidence without claiming that Rust compilation, Docker Compose execution, or live vLLM model loading has occurred in this sandbox.
+
+## Phase 3 — Execution Safety Hardening
+
+| Capability | Source/mocked acceptance | Live host acceptance | Notes |
+|---|---:|---:|---|
+| Production sandbox default | implemented | pending Docker host | `VERITAS_PROFILE=*prod` defaults to sandbox unless explicitly overridden. |
+| Local runner guardrail | implemented | n/a | Production profiles block local shell unless `VERITAS_ALLOW_LOCAL_COMMAND_RUNNER=true`. |
+| Command allowlist hardening | implemented | n/a | Dangerous shell/system tokens such as `curl`, `sudo`, `docker`, `;`, `&&`, pipes, redirects, and inline code are rejected. |
+| Docker sandbox resource flags | implemented | pending Docker host | Sandbox command construction includes no network, CPU/memory/pids limits, read-only root, tmpfs `/tmp`, cap drop, and no-new-privileges. |
+| Canonical path safety | implemented | source/mocked tested | Generated paths are checked for relative-only components, symlink parents, symlink targets, and post-write containment. |
+| Run index persistence | implemented | source/mocked tested | Run state writes `events.jsonl`, `state.json`, and parent `run_index.jsonl`. |
+| Resume/cancel safety | implemented | source/mocked tested | Source/mocked proof covers tools pending, validation pending, stale lock, duplicate lock, and cancellation blocking. |
+| Command audit visibility | implemented | source/mocked tested | `/status/:run_id` includes command audit tail and lock metadata. |
+
+## Phase 4 — Retrieval and Ontology Source-Mocked Validation
+
+| Capability | Status | Evidence |
+|---|---|---|
+| OpenSearch mapping contract | source/mocked passed | `services/ingestion/veritas_ingest/retrieval_ontology_contracts.py`, `scripts/e2e/source-mocked-retrieval-ontology.sh` |
+| Vector dimension mismatch rejection | source/mocked passed | `assert_vector_dimension` test and Phase 4 E2E summary |
+| Versioned index/read-write alias migration | source/mocked passed | `MockOpenSearchTransport` migration simulation |
+| Retrieval fallback | source/mocked passed | read alias failure to write alias success simulation |
+| Fuseki named graph discipline | source/mocked passed | ontology/document/run/validation graph URI tests |
+| No PDF binary in RDF upload | source/mocked passed | `graph_store_request` rejects PDF payload markers |
+| Run-report RDF facts | source/mocked passed | SourceCodeArtifact, VerificationResult, BuildArtifact TTL generation |
+| Planner SPARQL fact summary | source/mocked passed | query-pack fixture summaries for all planner queries |
+| Live OpenSearch/Fuseki validation | host_validation_pending | run live service validation on target host |
+
+## Phase 5 — SHACL and Mathematical Governance Source-Mocked Validation
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Combined core + math SHACL pack | source/mocked passed | `load_combined_shape_pack`, `shape_pack_contract` |
+| SymbolicShadow extraction/readiness obligations | source/mocked passed | missing evidence/source/OCR/confidence/review fixtures fail |
+| MathematicalDiscoveryArtifact readiness | source/mocked passed | missing representation/invariant/validation fixtures fail |
+| BuildArtifact validation gate | source/mocked passed | validated build without validation fixture fails |
+| SHACL findings RDF output | source/mocked passed | `shacl_findings_to_turtle` parses as Turtle |
+| Automatic SHACL gate source update | implemented | `default_shacl_shapes`, `collect_shacl_data_ttl`, `shacl_findings_to_turtle` |
+| Live SHACL service execution | host_validation_pending | requires Docker/pySHACL host |
+
+## Phase 6 — Formula OCR and Formula Review Source-Mocked Validation
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Command LaTeX OCR provider contract | source/mocked passed | `command_ocr_contract`, `scripts/e2e/source-mocked-formula-ocr-review.sh` |
+| HTTP LaTeX OCR provider contract | source/mocked passed | `http_ocr_contract`, fake HTTP OCR server |
+| Formula image metadata contract | source/mocked passed | mock renderer writes deterministic image and metadata |
+| OCR fallback states | source/mocked passed | `none`, `heuristic`, `command`, and `http` modes return auditable statuses |
+| Formula review persistence | source/mocked passed | approve/edit/reject/skip/auto_approve decisions update chunk JSONL, codegen eligibility, RDF facts |
+| APA citation review persistence | source/mocked passed | approve/edit/reject/incomplete decisions update metadata and RDF facts |
+| Chunking edge cases | source/mocked passed | abbreviations, no punctuation, multiple formulas, and semicolon boundaries covered |
+| OpenSearch mapping for OCR/review metadata | source/mocked passed | formula/citation review fields are mapped as keyword/boolean/float as appropriate |
+| Live formula OCR quality on real arXiv corpus | host_validation_pending | run representative corpus validation on target environment |
+
+## Phase 7 — Human Review UX
+
+| Capability | Source/mocked status | Live-host status |
+|---|---:|---:|
+| Citation/formula/representation/plan/code/validation checkpoints | Implemented and Python-tested | Host validation pending |
+| Human checkpoint policy gate | Implemented and Python-tested | Host validation pending |
+| Rejection/missing approval blocking | Implemented and Python-tested | Host validation pending |
+| Waiver with explicit reason | Implemented and Python-tested | Host validation pending |
+| RDF/Turtle `HumanCheckpoint` facts | Implemented and Python-tested | Host validation pending |
+| Search-ready checkpoint records | Implemented and Python-tested | Host validation pending |
+| `/status/:run_id` checkpoint visibility | Source-level implemented | Rust host validation pending |

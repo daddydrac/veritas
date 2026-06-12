@@ -16,6 +16,10 @@ class CitationMetadata:
     doi: str = ""
     apa_citation: str = ""
     status: str = "machine_generated_pending_human_review"
+    citation_review_status: str = "machine_generated_pending_human_review"
+    citation_human_validated: bool = False
+    citation_usable_for_audit: bool = False
+    citation_reviewer: str = ""
 
 
 def _year(value: str | None) -> str:

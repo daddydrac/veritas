@@ -65,6 +65,10 @@ def ensure_index(client: Any, index: str, cfg: dict[str, Any] | None = None) -> 
                 "title": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 512}}},
                 "abstract": {"type": "text"},
                 "apa_citation": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 1024}}},
+                "citation_review_status": {"type": "keyword"},
+                "citation_human_validated": {"type": "boolean"},
+                "citation_reviewer": {"type": "keyword"},
+                "citation_usable_for_audit": {"type": "boolean"},
                 "source_url": {"type": "keyword"},
                 "content_hash": {"type": "keyword"},
                 "text": {"type": "text"},
@@ -98,12 +102,17 @@ def ensure_index(client: Any, index: str, cfg: dict[str, Any] | None = None) -> 
                         "description": {"type": "text"},
                         "formula_image_path": {"type": "keyword"},
                         "formula_image_status": {"type": "keyword"},
+                        "formula_image_engine": {"type": "keyword"},
+                        "formula_image_confidence": {"type": "float"},
+                        "bbox_status": {"type": "keyword"},
                         "latex_ocr_status": {"type": "keyword"},
                         "latex_ocr_engine": {"type": "keyword"},
                         "latex_ocr_confidence": {"type": "float"},
                         "human_validated": {"type": "boolean"},
                         "human_validation_status": {"type": "keyword"},
                         "use_for_codegen": {"type": "boolean"},
+                        "codegen_eligibility_status": {"type": "keyword"},
+                        "review_required": {"type": "boolean"},
                         "page": {"type": "integer"},
                         "bbox": {"type": "float"},
                         "raw_latex": {
@@ -154,6 +163,10 @@ def index_chunks(opensearch_url: str, index: str, chunks: list[dict], cfg: dict[
             "title": meta.get("title", ""),
             "abstract": meta.get("summary", ""),
             "apa_citation": meta.get("apa_citation", ""),
+            "citation_review_status": meta.get("citation_review_status", meta.get("status", "machine_generated_pending_human_review")),
+            "citation_human_validated": bool(meta.get("citation_human_validated", False)),
+            "citation_reviewer": meta.get("citation_reviewer", ""),
+            "citation_usable_for_audit": bool(meta.get("citation_usable_for_audit", False)),
             "source_url": meta.get("source_url") or meta.get("entry_url") or meta.get("pdf_url", ""),
             "content_hash": meta.get("pdf_sha256", ""),
         }
@@ -204,6 +217,12 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
         g.add((piri, ns.hasIdentifier, Literal(paper_id)))
         if meta.get("apa_citation"):
             g.add((piri, DCTERMS.bibliographicCitation, Literal(str(meta["apa_citation"]))))
+        if meta.get("citation_review_status"):
+            g.add((piri, ns.hasCitationReviewStatus, Literal(str(meta.get("citation_review_status")))))
+        if meta.get("citation_human_validated") is not None:
+            g.add((piri, ns.hasCitationHumanValidationStatus, Literal(str(bool(meta.get("citation_human_validated"))).lower())))
+        if meta.get("citation_reviewer"):
+            g.add((piri, ns.hasHumanReviewer, Literal(str(meta.get("citation_reviewer")))))
         if meta.get("authors"):
             for author in meta.get("authors", []):
                 g.add((piri, DCTERMS.creator, Literal(str(author))))
@@ -246,6 +265,12 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
                 g.add((firi, ns.hasFormulaImagePath, Literal(str(formula.get("formula_image_path")))))
             if formula.get("formula_image_status"):
                 g.add((firi, ns.hasFormulaImageStatus, Literal(str(formula.get("formula_image_status")))))
+            if formula.get("formula_image_engine"):
+                g.add((firi, ns.hasFormulaImageEngine, Literal(str(formula.get("formula_image_engine")))))
+            if formula.get("formula_image_confidence") is not None:
+                g.add((firi, ns.hasFormulaImageConfidence, Literal(float(formula.get("formula_image_confidence", 0.0)), datatype=XSD.decimal)))
+            if formula.get("bbox_status"):
+                g.add((firi, ns.hasBoundingBoxStatus, Literal(str(formula.get("bbox_status")))))
             if formula.get("latex_ocr_status"):
                 g.add((firi, ns.hasLatexOcrStatus, Literal(str(formula.get("latex_ocr_status")))))
             if formula.get("latex_ocr_engine"):
@@ -254,6 +279,10 @@ def chunks_to_turtle(chunks: list[dict], namespace: str, graph_uri: str) -> str:
                 g.add((firi, ns.hasHumanValidationStatus, Literal(str(formula.get("human_validation_status")))))
             elif formula.get("human_validated") is not None:
                 g.add((firi, ns.hasHumanValidationStatus, Literal(str(bool(formula.get("human_validated"))).lower())))
+            if formula.get("codegen_eligibility_status"):
+                g.add((firi, ns.hasCodegenEligibilityStatus, Literal(str(formula.get("codegen_eligibility_status")))))
+            if formula.get("use_for_codegen") is not None:
+                g.add((firi, ns.isEligibleForCodegen, Literal(str(bool(formula.get("use_for_codegen"))).lower())))
             g.add((firi, ns.hasFormulaSource, Literal(str(formula.get("source", "unknown")))))
             if formula.get("pattern"):
                 g.add((firi, ns.hasFormulaPattern, Literal(str(formula.get("pattern")))))

@@ -13,7 +13,14 @@ from .docling_pdf import convert_pdf
 from .embeddings import attach_embeddings
 from .errors import VeritasFailure, emit_failure
 from .formula_images import attach_formula_images
-from .human_review import review_formulas_noninteractive
+from .human_review import review_citations_in_chunks, review_formulas_noninteractive, load_chunks_jsonl, review_summary
+from .human_workflow import (
+    CHECKPOINT_PHASES,
+    create_checkpoint,
+    persist_human_workflow,
+    source_mocked_phase7_summary,
+    workflow_gate,
+)
 from .codegen import generate_package
 from .citations import citation_from_metadata
 from .ontology import upload_ontology
@@ -252,14 +259,21 @@ def cmd_ingest_pdf(args: argparse.Namespace) -> None:
 def cmd_review_formulas(args: argparse.Namespace) -> None:
     """Review formula candidates in a chunks JSONL file.
 
-    Interactive mode is intentionally simple and terminal-safe: the user sees
-    LaTeX, description, image path, confidence, and source status, then chooses
-    approve/edit/reject/skip. Non-interactive mode is used for CI.
+    Interactive mode is intentionally terminal-safe: the user sees LaTeX,
+    normalized LaTeX, description, image path, image/OCR status, confidence,
+    and source status, then chooses approve/edit/reject/skip. Non-interactive
+    mode is used for CI and source/mocked proof.
     """
 
     path = Path(args.chunks)
     if args.decision:
-        result = review_formulas_noninteractive(path, args.decision, reviewer=args.reviewer, output=Path(args.output) if args.output else None)
+        result = review_formulas_noninteractive(
+            path,
+            args.decision,
+            reviewer=args.reviewer,
+            output=Path(args.output) if args.output else None,
+            corrected_latex=args.corrected_latex,
+        )
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
@@ -267,13 +281,18 @@ def cmd_review_formulas(args: argparse.Namespace) -> None:
 
     chunks = load_chunks_jsonl(path)
     reviewed = 0
-    for _chunk, formula in iter_formulas(chunks):
+    for chunk, formula in iter_formulas(chunks):
+        meta = chunk.get("metadata", {}) or {}
         print("\nFormula Review")
         print("──────────────")
+        print(f"paper: {meta.get('apa_citation') or meta.get('title') or chunk.get('paper_id','')}")
         print(f"id: {formula.get('formula_id','')}")
         print(f"latex: {formula.get('latex','')}")
+        print(f"normalized: {formula.get('normalized_latex','')}")
         print(f"description: {formula.get('description','')}")
         print(f"image: {formula.get('formula_image_path','') or '<none>'}")
+        print(f"image_status: {formula.get('formula_image_status','')} engine={formula.get('formula_image_engine','')}")
+        print(f"ocr_status: {formula.get('latex_ocr_status','')} engine={formula.get('latex_ocr_engine','')} confidence={formula.get('latex_ocr_confidence','')}")
         print(f"source: {formula.get('source','')} confidence={formula.get('confidence','')}")
         decision = input("Decision [approve/edit/reject/skip]: ").strip().lower() or "skip"
         corrected = None
@@ -283,7 +302,79 @@ def cmd_review_formulas(args: argparse.Namespace) -> None:
         reviewed += 1
     target = Path(args.output) if args.output else path
     write_chunks_jsonl(target, chunks)
-    print(json.dumps({"ok": True, "formulas_reviewed": reviewed, "path": str(target)}, indent=2, ensure_ascii=False))
+    print(json.dumps({"ok": True, "formulas_reviewed": reviewed, "path": str(target), "summary": review_summary(chunks)}, indent=2, ensure_ascii=False))
+
+
+def cmd_review_citations(args: argparse.Namespace) -> None:
+    path = Path(args.chunks)
+    result = review_citations_in_chunks(
+        path,
+        args.decision,
+        reviewer=args.reviewer,
+        output=Path(args.output) if args.output else None,
+        corrected_citation=args.corrected_citation,
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def cmd_validate_formulas(args: argparse.Namespace) -> None:
+    path = Path(args.chunks)
+    chunks = load_chunks_jsonl(path)
+    formulas = [formula for chunk in chunks for formula in chunk.get("formulas", []) or []]
+    missing_latex = [formula.get("formula_id", "<unknown>") for formula in formulas if not str(formula.get("latex", "")).strip()]
+    missing_review = [formula.get("formula_id", "<unknown>") for formula in formulas if not formula.get("human_validated")]
+    missing_context = [formula.get("formula_id", "<unknown>") for formula in formulas if not formula.get("context_before") and not formula.get("context_after") and formula.get("source") != "docling_visual"]
+    codegen_blocked = [formula.get("formula_id", "<unknown>") for formula in formulas if not formula.get("use_for_codegen")]
+    payload = {
+        "ok": not missing_latex,
+        "formula_count": len(formulas),
+        "missing_latex": missing_latex,
+        "pending_human_review": missing_review,
+        "missing_context": missing_context,
+        "blocked_for_codegen": codegen_blocked,
+        "summary": review_summary(chunks),
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def cmd_review_checkpoint(args: argparse.Namespace) -> None:
+    artifact = json.loads(args.artifact_json) if args.artifact_json else {}
+    checkpoint = create_checkpoint(
+        phase=args.phase,
+        artifact=artifact,
+        policy=args.policy,
+        decision=args.decision,
+        reviewer=args.reviewer,
+        notes=args.notes or "",
+        run_id=args.run_id or "ad_hoc",
+    )
+    output = Path(args.output) if args.output else None
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(checkpoint, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps({"ok": True, "checkpoint": checkpoint, "output": str(output) if output else None}, indent=2, ensure_ascii=False))
+
+
+def cmd_review_workflow(args: argparse.Namespace) -> None:
+    checkpoints = []
+    if args.checkpoints:
+        for line in Path(args.checkpoints).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                checkpoints.append(json.loads(line))
+    else:
+        from .human_workflow import build_workflow_checkpoints
+
+        decision_map = {phase: args.decision for phase in CHECKPOINT_PHASES}
+        checkpoints = build_workflow_checkpoints(policy=args.policy, decisions=decision_map, run_id=args.run_id or "ad_hoc", reviewer=args.reviewer)
+    gate = workflow_gate(checkpoints, policy=args.policy)
+    workspace = Path(args.workspace) if args.workspace else Path("data/human-workflows") / (args.run_id or "ad_hoc")
+    report = persist_human_workflow(workspace, checkpoints, gate)
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+
+
+def cmd_phase7_source_mocked(args: argparse.Namespace) -> None:
+    summary = source_mocked_phase7_summary(Path(args.workspace) if args.workspace else None)
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 def cmd_upload_ontology(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
@@ -350,8 +441,45 @@ def main() -> None:
     p_review.add_argument("--chunks", required=True)
     p_review.add_argument("--decision", choices=["approve", "edit", "reject", "skip", "auto_approve"], required=False)
     p_review.add_argument("--reviewer", default="human")
+    p_review.add_argument("--corrected-latex", required=False)
     p_review.add_argument("--output", required=False)
     p_review.set_defaults(func=cmd_review_formulas)
+
+    p_citation = sub.add_parser("review-citations")
+    p_citation.add_argument("--chunks", required=True)
+    p_citation.add_argument("--decision", choices=["approve", "edit", "reject", "skip", "incomplete", "auto_approve"], required=True)
+    p_citation.add_argument("--reviewer", default="human")
+    p_citation.add_argument("--corrected-citation", required=False)
+    p_citation.add_argument("--output", required=False)
+    p_citation.set_defaults(func=cmd_review_citations)
+
+    p_review_checkpoint = sub.add_parser("review-checkpoint")
+    p_review_checkpoint.add_argument("--phase", choices=list(CHECKPOINT_PHASES), required=True)
+    p_review_checkpoint.add_argument("--decision", choices=["pending", "approve", "edit", "reject", "skip", "auto_approve", "ask_for_explanation"], required=True)
+    p_review_checkpoint.add_argument("--policy", choices=["auto_approve", "require_all", "require_high_risk_only"], default="require_high_risk_only")
+    p_review_checkpoint.add_argument("--artifact-json", required=False)
+    p_review_checkpoint.add_argument("--reviewer", default="human")
+    p_review_checkpoint.add_argument("--notes", required=False)
+    p_review_checkpoint.add_argument("--run-id", required=False)
+    p_review_checkpoint.add_argument("--output", required=False)
+    p_review_checkpoint.set_defaults(func=cmd_review_checkpoint)
+
+    p_review_workflow = sub.add_parser("review-workflow")
+    p_review_workflow.add_argument("--checkpoints", required=False)
+    p_review_workflow.add_argument("--policy", choices=["auto_approve", "require_all", "require_high_risk_only"], default="require_all")
+    p_review_workflow.add_argument("--decision", choices=["approve", "auto_approve", "skip"], default="approve")
+    p_review_workflow.add_argument("--reviewer", default="human")
+    p_review_workflow.add_argument("--run-id", required=False)
+    p_review_workflow.add_argument("--workspace", required=False)
+    p_review_workflow.set_defaults(func=cmd_review_workflow)
+
+    p_phase7 = sub.add_parser("phase7-source-mocked")
+    p_phase7.add_argument("--workspace", required=False)
+    p_phase7.set_defaults(func=cmd_phase7_source_mocked)
+
+    p_validate_formulas = sub.add_parser("validate-formulas")
+    p_validate_formulas.add_argument("--chunks", required=True)
+    p_validate_formulas.set_defaults(func=cmd_validate_formulas)
 
     args = parser.parse_args()
     try:
