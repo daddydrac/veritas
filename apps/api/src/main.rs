@@ -10,10 +10,11 @@ use axum::{
 };
 use reqwest::Client;
 use providers::{ModelRole, ProviderError, ProviderRouter};
-use schemas::{SchemaKey, schema_json, validate_required_object_fields};
+use schemas::{SchemaKey, schema_json, validate_json_schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
+    collections::HashMap,
     env,
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -135,6 +136,8 @@ struct HumanCheckpointRequest {
     artifact: Option<Value>,
     reviewer: Option<String>,
     notes: Option<String>,
+    policy: Option<String>,
+    required: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -424,15 +427,19 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let planner_health = state.provider_router.health_for_role(&state.planner_model).await;
+    let code_health = state.provider_router.health_for_role(&state.code_model).await;
+    let math_health = state.provider_router.health_for_role(&state.math_model).await;
+    let route_history = state.provider_router.history_snapshot().await;
     (
         StatusCode::OK,
         Json(json!({
             "ok": true,
             "serving_solution": "vllm",
-            "protocol": "OpenAI-compatible /v1/chat/completions",
-            "planner": role_json(&state.planner_model),
+            "protocol": "OpenAI-compatible /v1/chat/completions with /v1/models health and role-specific guided_json schemas",
+            "planner": {"config": role_json(&state.planner_model), "health": planner_health},
             "code_generation": {
-                "primary": role_json(&state.code_model),
+                "primary": {"config": role_json(&state.code_model), "health": code_health},
                 "recommended_options": [
                     "Qwen/Qwen2.5-Coder-7B-Instruct",
                     "Qwen/Qwen2.5-Coder-14B-Instruct",
@@ -440,7 +447,7 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 ]
             },
             "math_reasoning": {
-                "primary": role_json(&state.math_model),
+                "primary": {"config": role_json(&state.math_model), "health": math_health},
                 "recommended_options": ["allenai/Olmo-3-7B-Instruct", state.math_large_model]
             },
             "embeddings": {
@@ -450,6 +457,7 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             },
             "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet", "shacl": state.shacl_url},
             "provider_router": state.provider_router.summary(),
+            "provider_route_history_tail": route_history.iter().rev().take(20).cloned().collect::<Vec<_>>(),
             "remote_fallback": {"enabled": state.remote_model_enabled, "base_url": state.remote_model_base_url, "model": state.remote_model_name, "api_key_env": state.remote_model_api_key_env},
             "execution": {"command_runner": state.command_runner, "sandbox_default": state.command_runner == "docker" || state.command_runner == "sandbox"},
             "shacl": {"url": state.shacl_url, "enforce": state.shacl_enforce}
@@ -472,6 +480,7 @@ fn role_json(role: &ModelRole) -> Value {
 
 async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let persisted_runs = list_persisted_runs(&state.runs_dir).await.unwrap_or_else(|error| json!({"error": error.to_string()}));
+    let run_index_tail = read_events_tail(&state.runs_dir.join("run_index.jsonl"), 100).await.unwrap_or_default();
     let memory_runs = state.recent_runs.lock().await.clone();
     (
         StatusCode::OK,
@@ -479,8 +488,9 @@ async fn status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "ok": true,
             "runs_dir": state.runs_dir.display().to_string(),
             "persistent_runs": persisted_runs,
+            "run_index_tail": run_index_tail,
             "recent_runs": memory_runs,
-            "message": "Run state is persisted in each run workspace with request.json, state.json, events.jsonl, artifacts, and final_report.json."
+            "message": "Run state is persisted in each run workspace with request.json, state.json, events.jsonl, command_audit.jsonl, run_index.jsonl, artifacts, and final_report.json."
         })),
     )
 }
@@ -495,6 +505,10 @@ async fn status_by_run_id(State(state): State<Arc<AppState>>, AxumPath(path): Ax
     let final_report = read_json_file(&workspace.join("final_report.json")).await;
     let request = read_json_file(&workspace.join("request.json")).await;
     let events = read_events_tail(&workspace.join("events.jsonl"), 50).await.unwrap_or_else(|_| Vec::new());
+    let command_audit = read_events_tail(&workspace.join("command_audit.jsonl"), 50).await.unwrap_or_else(|_| Vec::new());
+    let human_checkpoints = read_events_tail(&workspace.join("human_checkpoints.jsonl"), 50).await.unwrap_or_else(|_| Vec::new());
+    let human_checkpoint_gate = human_checkpoint_gate_summary(&workspace, &state.human_loop_policy).await;
+    let lock_metadata = read_json_file(&workspace.join("run.lock")).await;
     let cancelled = workspace.join("CANCELLED").exists();
     let locked = workspace.join("run.lock").exists();
     (StatusCode::OK, Json(json!({
@@ -503,9 +517,13 @@ async fn status_by_run_id(State(state): State<Arc<AppState>>, AxumPath(path): Ax
         "workspace": workspace.display().to_string(),
         "cancelled": cancelled,
         "locked": locked,
+        "lock_metadata": lock_metadata,
         "request": request,
         "state": state_json,
         "events_tail": events,
+        "command_audit_tail": command_audit,
+        "human_checkpoints_tail": human_checkpoints,
+        "human_checkpoint_gate": human_checkpoint_gate,
         "final_report": final_report
     })))
 }
@@ -1008,6 +1026,9 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
         Err(error) => return error.response(),
     };
     let checkpoint = math_human_checkpoint(&state, &math_reasoning, &formula_context, req.human_approved.unwrap_or(false), req.human_decision.clone());
+    if let Err(error) = validate_model_json(SchemaKey::HumanCheckpoint, &checkpoint) {
+        return error.response();
+    }
     if checkpoint.get("required").and_then(Value::as_bool).unwrap_or(false) && !checkpoint.get("approved").and_then(Value::as_bool).unwrap_or(false) {
         return (
             StatusCode::ACCEPTED,
@@ -1094,29 +1115,113 @@ fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_conte
 
 async fn human_checkpoint(State(state): State<Arc<AppState>>, Json(req): Json<HumanCheckpointRequest>) -> impl IntoResponse {
     let decision = req.decision.trim().to_ascii_lowercase();
-    if !["approve", "edit", "reject", "skip", "auto_approve", "ask_for_explanation"].contains(&decision.as_str()) {
-        return ApiFailure::new(StatusCode::BAD_REQUEST, "human_checkpoint.invalid_decision", format!("Unsupported decision: {}", req.decision), "Use approve, edit, reject, skip, auto_approve, or ask_for_explanation.").response();
+    if !["pending", "approve", "edit", "reject", "skip", "auto_approve", "ask_for_explanation"].contains(&decision.as_str()) {
+        return ApiFailure::new(StatusCode::BAD_REQUEST, "human_checkpoint.invalid_decision", format!("Unsupported decision: {}", req.decision), "Use pending, approve, edit, reject, skip, auto_approve, or ask_for_explanation.").response();
+    }
+    let phase = req.phase.trim().to_ascii_lowercase();
+    let allowed_phases = ["citation_review", "formula_review", "representation_review", "plan_review", "code_architecture_review", "validation_review", "math_to_code_representation_review"];
+    if !allowed_phases.contains(&phase.as_str()) {
+        return ApiFailure::new(StatusCode::BAD_REQUEST, "human_checkpoint.invalid_phase", format!("Unsupported checkpoint phase: {}", req.phase), "Use citation_review, formula_review, representation_review, plan_review, code_architecture_review, validation_review, or math_to_code_representation_review.").response();
     }
     let run_id = req.run_id.clone().unwrap_or_else(|| format!("ad_hoc-{}", now_millis()));
     let workspace = state.runs_dir.join(&run_id);
     if let Err(error) = fs::create_dir_all(&workspace).await {
         return ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "human_checkpoint.workspace", format!("Could not create checkpoint workspace: {error}"), "Check VERITAS_RUNS_DIR permissions.").response();
     }
+    let policy = req.policy.unwrap_or_else(|| state.human_loop_policy.clone());
+    let notes = req.notes.unwrap_or_default();
+    let artifact_value = req.artifact.clone().unwrap_or_else(|| json!({}));
+    let required = req.required.unwrap_or_else(|| human_checkpoint_required(&policy, &phase, &artifact_value));
+    let approved = human_decision_approved(&decision, &notes) || (!required && decision != "reject");
+    let blocked = human_decision_blocks(&decision, required, &notes);
     let checkpoint = json!({
-        "run_id": run_id,
-        "phase": req.phase,
-        "decision": decision,
+        "kind": "HumanCheckpoint",
+        "run_id": run_id.clone(),
+        "phase": phase.clone(),
+        "policy": policy.clone(),
+        "required": required,
+        "decision": decision.clone(),
+        "approved": approved,
+        "blocked": blocked,
+        "waived": decision == "skip" && !notes.trim().is_empty(),
         "reviewer": req.reviewer.unwrap_or_else(|| "human".to_string()),
-        "notes": req.notes.unwrap_or_default(),
-        "artifact": req.artifact.unwrap_or_else(|| json!({})),
+        "notes": notes.clone(),
+        "artifact": artifact_value,
         "timestamp_ms": now_millis(),
-        "status": "recorded"
+        "status": if approved { "approved_or_waived" } else if blocked { "blocked" } else { "recorded" }
     });
     if let Err(error) = append_jsonl(&workspace.join("human_checkpoints.jsonl"), &checkpoint).await {
         return ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "human_checkpoint.persist", format!("Could not persist checkpoint: {error}"), "Check run workspace permissions.").response();
     }
     let _ = persist_run_state(&workspace, "HumanCheckpointRecorded", checkpoint.clone()).await;
-    (StatusCode::OK, Json(json!({"ok": true, "checkpoint": checkpoint, "workspace": workspace.display().to_string()})))
+    let gate = human_checkpoint_gate_summary(&workspace, &state.human_loop_policy).await;
+    (StatusCode::OK, Json(json!({"ok": true, "checkpoint": checkpoint, "human_checkpoint_gate": gate, "workspace": workspace.display().to_string()})))
+}
+
+fn human_decision_approved(decision: &str, notes: &str) -> bool {
+    matches!(decision, "approve" | "edit" | "auto_approve") || (decision == "skip" && !notes.trim().is_empty())
+}
+
+fn human_decision_blocks(decision: &str, required: bool, notes: &str) -> bool {
+    if decision == "reject" { return true; }
+    if !required { return false; }
+    !human_decision_approved(decision, notes)
+}
+
+fn human_checkpoint_required(policy: &str, phase: &str, artifact: &Value) -> bool {
+    match policy {
+        "auto_approve" => false,
+        "require_all" => true,
+        "require_high_risk_only" => {
+            matches!(phase, "representation_review" | "plan_review" | "code_architecture_review" | "validation_review" | "math_to_code_representation_review")
+                || artifact.to_string().to_ascii_lowercase().contains("high")
+                || artifact.to_string().to_ascii_lowercase().contains("critical")
+                || artifact.to_string().to_ascii_lowercase().contains("failed")
+                || artifact.to_string().to_ascii_lowercase().contains("unproved")
+        }
+        _ => true,
+    }
+}
+
+async fn human_checkpoint_gate_summary(workspace: &Path, policy: &str) -> Value {
+    let checkpoints = read_events_tail(&workspace.join("human_checkpoints.jsonl"), 500).await.unwrap_or_default();
+    let required_phases = ["citation_review", "formula_review", "representation_review", "plan_review", "code_architecture_review", "validation_review"];
+    let mut latest: HashMap<String, Value> = HashMap::new();
+    for checkpoint in checkpoints.iter() {
+        if let Some(phase) = checkpoint.get("phase").and_then(Value::as_str) {
+            latest.insert(phase.to_string(), checkpoint.clone());
+        }
+    }
+    let mut missing = Vec::new();
+    let mut blocked = Vec::new();
+    let mut approved = Vec::new();
+    let mut waived = Vec::new();
+    let mut rejected = Vec::new();
+    for phase in required_phases {
+        match latest.get(phase) {
+            Some(checkpoint) => {
+                if checkpoint.get("waived").and_then(Value::as_bool).unwrap_or(false) { waived.push(phase); }
+                if checkpoint.get("approved").and_then(Value::as_bool).unwrap_or(false) { approved.push(phase); }
+                if checkpoint.get("decision").and_then(Value::as_str) == Some("reject") { rejected.push(phase); blocked.push(phase); }
+                else if checkpoint.get("blocked").and_then(Value::as_bool).unwrap_or(false) { blocked.push(phase); }
+            }
+            None => {
+                if policy == "require_all" { missing.push(phase); blocked.push(phase); }
+            }
+        }
+    }
+    json!({
+        "policy": policy,
+        "checkpoint_count": checkpoints.len(),
+        "approved_phases": approved,
+        "waived_phases": waived,
+        "missing_phases": missing,
+        "rejected_phases": rejected,
+        "blocked_phases": blocked,
+        "can_continue": blocked.is_empty(),
+        "production_status_allowed": blocked.is_empty(),
+        "note": "Phase 7 human workflow gate covers citation, formula, representation, plan, code architecture, and validation review."
+    })
 }
 
 fn production_opensearch_mapping(vector_field: &str, dimension: usize, version: &str) -> Value {
@@ -1219,10 +1324,10 @@ fn schema_description_for(key: SchemaKey) -> Value {
 
 
 fn validate_model_json(schema: SchemaKey, value: &Value) -> Result<(), ApiFailure> {
-    validate_required_object_fields(schema, value).map_err(|errors| ApiFailure::new(
+    validate_json_schema(schema, value).map_err(|errors| ApiFailure::new(
         StatusCode::BAD_GATEWAY,
-        "model.schema_required_fields",
-        format!("Model output failed required-field validation for {} schema.", schema.as_str()),
+        "model.schema_invalid",
+        format!("Model output failed full JSON Schema validation for {} schema.", schema.as_str()),
         "Use vLLM structured outputs with the role-specific schema, reduce temperature, or choose a stronger model."
     ).with_details(json!({"schema": schema.as_str(), "errors": errors, "output": value})))?;
     match schema {
@@ -1230,8 +1335,42 @@ fn validate_model_json(schema: SchemaKey, value: &Value) -> Result<(), ApiFailur
         SchemaKey::Codegen => validate_codegen_schema(value),
         SchemaKey::MathReasoning => validate_math_reasoning_schema(value),
         SchemaKey::Repair => validate_repair_schema(value),
+        SchemaKey::HumanCheckpoint => Ok(()),
         SchemaKey::RunReport => Ok(()),
     }
+}
+
+fn generated_path_is_safe(path: &str) -> bool {
+    validate_relative_output_path(path).is_ok()
+}
+
+fn validate_relative_output_path(path: &str) -> Result<Vec<String>, String> {
+    if path.trim().is_empty() {
+        return Err("generated path is empty".to_string());
+    }
+    let path_obj = Path::new(path);
+    if path_obj.is_absolute() {
+        return Err("generated path must be relative".to_string());
+    }
+    let mut parts = Vec::new();
+    for component in path_obj.components() {
+        match component {
+            std::path::Component::Normal(value) => {
+                let part = value.to_string_lossy().to_string();
+                if part.is_empty() || part == "." || part == ".." {
+                    return Err(format!("unsafe path component: {part}"));
+                }
+                parts.push(part);
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => return Err("generated path must not contain parent-directory components".to_string()),
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => return Err("generated path must not contain a root or Windows prefix".to_string()),
+        }
+    }
+    if parts.is_empty() {
+        return Err("generated path does not identify a file".to_string());
+    }
+    Ok(parts)
 }
 
 fn validate_repair_schema(output: &Value) -> Result<(), ApiFailure> {
@@ -1240,6 +1379,13 @@ fn validate_repair_schema(output: &Value) -> Result<(), ApiFailure> {
     if output.get("failure_summary").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("failure_summary is required"); }
     let files = output.get("files").and_then(Value::as_array);
     if files.map(|v| v.is_empty()).unwrap_or(true) { errors.push("files must be a non-empty array"); }
+    if let Some(items) = files {
+        for item in items {
+            if let Some(path) = item.get("path").and_then(Value::as_str) {
+                if !generated_path_is_safe(path) { errors.push(format!("unsafe repair file path: {path}")); }
+            }
+        }
+    }
     let commands = output.get("commands").and_then(Value::as_array);
     if commands.is_none() { errors.push("commands array is required"); }
     if errors.is_empty() { Ok(()) } else { Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "repair.schema_invalid", "Repair model returned JSON that failed the Veritas repair schema.", "Use role-specific structured outputs and retry.").with_details(json!({"errors": errors, "output": output}))) }
@@ -1302,6 +1448,13 @@ fn validate_plan_schema(plan: &Value) -> Result<(), ApiFailure> {
     }
     if plan.get("validation_gates").and_then(Value::as_array).map(|v| v.is_empty()).unwrap_or(true) {
         errors.push("validation_gates must be a non-empty array");
+    }
+    if let Some(files) = plan.get("files_to_generate").and_then(Value::as_array) {
+        for file in files {
+            if let Some(path) = file.get("path").and_then(Value::as_str) {
+                if !generated_path_is_safe(path) { errors.push(format!("unsafe planned file path: {path}")); }
+            }
+        }
     }
     if errors.is_empty() {
         Ok(())
@@ -1445,8 +1598,11 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         write_json_file(&workspace.join("retry_history.json"), &json!(retry_history)).await?;
     }
 
+    let provider_route_history = state.provider_router.history_snapshot().await;
+    let human_checkpoints = read_events_tail(&workspace.join("human_checkpoints.jsonl"), 500).await.unwrap_or_default();
+    let human_checkpoint_gate = human_checkpoint_gate_summary(&workspace, &state.human_loop_policy).await;
     let mut report = json!({
-        "ok": final_status == "production_candidate_validated",
+        "ok": final_status == "production_candidate_validated" && human_checkpoint_gate.get("production_status_allowed").and_then(Value::as_bool).unwrap_or(true),
         "kind": "VeritasAutonomousRunReport",
         "run_id": run_id,
         "workspace": workspace.display().to_string(),
@@ -1454,8 +1610,12 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         "language": language,
         "generated_plan": plan,
         "model_routes_used": {"planner": role_json(&state.planner_model), "code": role_json(&state.code_model), "math": role_json(&state.math_model)},
+        "provider_route_history": provider_route_history,
         "tool_calls_performed": tool_calls,
         "automatic_shacl": automatic_shacl,
+        "human_checkpoint_policy": state.human_loop_policy,
+        "human_checkpoints": human_checkpoints,
+        "human_checkpoint_gate": human_checkpoint_gate,
         "files_changed": files_changed,
         "commands_run": commands_run,
         "validation_results": validation_results,
@@ -1470,6 +1630,7 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
     });
     let graph_upload = upload_run_report_to_fuseki(state, &run_id, &report).await.unwrap_or_else(|error| json!({"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}));
     report["fuseki_run_graph_upload"] = graph_upload;
+    validate_model_json(SchemaKey::RunReport, &report)?;
     write_json_file(&workspace.join("final_report.json"), &report).await?;
     persist_run_state(&workspace, "FinalReportWritten", json!({"final_status": report.get("final_status"), "report": "final_report.json"})).await?;
     Ok(report)
@@ -1565,6 +1726,9 @@ fn validate_codegen_schema(output: &Value) -> Result<(), ApiFailure> {
         Some(items) if !items.is_empty() => {
             for item in items {
                 if item.get("path").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("each file needs a non-empty path"); }
+                if let Some(path) = item.get("path").and_then(Value::as_str) {
+                    if !generated_path_is_safe(path) { errors.push(format!("unsafe generated file path: {path}")); }
+                }
                 if item.get("content").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("each file needs non-empty content"); }
             }
         }
@@ -1578,22 +1742,55 @@ async fn write_generated_files(workspace: &Path, generated: &Value, files_change
     for file in files {
         let rel = file.get("path").and_then(Value::as_str).unwrap_or_default();
         let content = file.get("content").and_then(Value::as_str).unwrap_or_default();
-        let target = safe_join(workspace, rel)?;
+        let target = safe_output_path(workspace, rel)?;
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.mkdir", format!("Could not create directory for {rel}: {error}"), "Check run workspace permissions."))?;
+            verify_existing_path_inside_workspace(workspace, parent, "generated file parent").await?;
         }
-        fs::write(&target, content).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.write_file", format!("Could not write generated file {rel}: {error}"), "Check run workspace permissions."))?;
+        reject_existing_symlink(&target, rel).await?;
+        let tmp = target.with_extension("veritas_tmp");
+        fs::write(&tmp, content).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.write_tmp", format!("Could not write temporary generated file {rel}: {error}"), "Check run workspace permissions."))?;
+        fs::rename(&tmp, &target).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.atomic_write", format!("Could not atomically write generated file {rel}: {error}"), "Check run workspace permissions and filesystem semantics."))?;
+        reject_existing_symlink(&target, rel).await?;
+        verify_existing_path_inside_workspace(workspace, &target, "generated file").await?;
         files_changed.push(rel.to_string());
     }
     Ok(())
 }
 
-fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, ApiFailure> {
-    let path = Path::new(rel);
-    if path.is_absolute() || rel.contains("..") {
-        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.unsafe_path", format!("Generated file path is unsafe: {rel}"), "Regenerate code. Generated paths must be relative and must not contain `..`."));
+fn safe_output_path(root: &Path, rel: &str) -> Result<PathBuf, ApiFailure> {
+    let parts = validate_relative_output_path(rel).map_err(|reason| ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.unsafe_path", format!("Generated file path is unsafe: {rel}: {reason}"), "Regenerate code. Generated paths must be relative file paths without absolute roots, parent-directory components, or path prefixes."))?;
+    let root_canonical = std::fs::canonicalize(root).map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.workspace_canonicalize", format!("Could not canonicalize run workspace {}: {error}", root.display()), "Check run workspace permissions and ensure it exists before writing files."))?;
+    let mut cursor = root_canonical.clone();
+    for part in &parts[..parts.len().saturating_sub(1)] {
+        cursor.push(Path::new(part.as_str()));
+        if let Ok(metadata) = std::fs::symlink_metadata(&cursor) {
+            if metadata.file_type().is_symlink() {
+                return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.symlink_parent", format!("Generated path {rel} traverses an existing symlink parent: {}", cursor.display()), "Remove the symlink or choose a safe path inside the run workspace."));
+            }
+        }
     }
-    Ok(root.join(path))
+    let mut target = root_canonical;
+    for part in parts {
+        target.push(Path::new(part.as_str()));
+    }
+    Ok(target)
+}
+
+async fn reject_existing_symlink(path: &Path, rel: &str) -> Result<(), ApiFailure> {
+    match fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.symlink_target", format!("Generated file path {rel} resolves to an existing symlink."), "Remove the symlink or regenerate into a normal file inside the run workspace.")),
+        Ok(_) | Err(_) => Ok(()),
+    }
+}
+
+async fn verify_existing_path_inside_workspace(root: &Path, path: &Path, label: &str) -> Result<(), ApiFailure> {
+    let root_canonical = fs::canonicalize(root).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.workspace_canonicalize", format!("Could not canonicalize workspace {}: {error}", root.display()), "Check run workspace permissions."))?;
+    let path_canonical = fs::canonicalize(path).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "codegen.path_canonicalize", format!("Could not canonicalize {label} {}: {error}", path.display()), "Check generated file path permissions."))?;
+    if !path_canonical.starts_with(&root_canonical) {
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.path_escape", format!("Generated {label} escaped the run workspace: {}", path_canonical.display()), "Regenerate code using paths contained by the run workspace."));
+    }
+    Ok(())
 }
 
 fn commands_for_run(workspace: &Path, language: &str, generated: &Value) -> Vec<String> {
@@ -1613,18 +1810,61 @@ fn commands_for_run(workspace: &Path, language: &str, generated: &Value) -> Vec<
 }
 
 async fn run_command(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
-    let runner = env::var("VERITAS_COMMAND_RUNNER").unwrap_or_else(|_| "local".to_string());
-    if runner == "docker" || runner == "sandbox" {
+    let runner = effective_command_runner();
+    if runner == "docker" || runner == "sandbox" || runner == "docker_sandbox" {
         run_command_in_docker_sandbox(workspace, command, timeout_secs).await
-    } else {
+    } else if runner == "local" {
+        if !local_command_runner_allowed() {
+            return json!({
+                "command": command,
+                "success": false,
+                "runner": "local_blocked",
+                "duration_ms": 0,
+                "error": "local command runner is disabled for the active production profile",
+                "remediation": "Use VERITAS_COMMAND_RUNNER=sandbox/docker, or explicitly set VERITAS_ALLOW_LOCAL_COMMAND_RUNNER=true only for trusted development environments.",
+                "profile": active_veritas_profile()
+            });
+        }
         run_command_local(workspace, command, timeout_secs).await
+    } else {
+        json!({
+            "command": command,
+            "success": false,
+            "runner": runner,
+            "duration_ms": 0,
+            "error": "unknown command runner",
+            "remediation": "Set VERITAS_COMMAND_RUNNER to sandbox, docker, docker_sandbox, or local. Production profiles default to sandbox."
+        })
     }
+}
+
+fn active_veritas_profile() -> String {
+    env::var("VERITAS_PROFILE")
+        .or_else(|_| env::var("VERITAS_ACCEPTANCE_PROFILE"))
+        .unwrap_or_else(|_| "development".to_string())
+}
+
+fn is_production_profile() -> bool {
+    let profile = active_veritas_profile().to_ascii_lowercase();
+    matches!(profile.as_str(), "production" | "prod" | "host-prod" | "single-gpu-prod" | "multi-gpu-prod" | "remote-model-prod") || profile.ends_with("-prod")
+}
+
+fn effective_command_runner() -> String {
+    match env::var("VERITAS_COMMAND_RUNNER") {
+        Ok(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
+        _ if is_production_profile() => "sandbox".to_string(),
+        _ => "local".to_string(),
+    }
+}
+
+fn local_command_runner_allowed() -> bool {
+    !is_production_profile() || bool_env("VERITAS_ALLOW_LOCAL_COMMAND_RUNNER", false)
 }
 
 async fn run_command_local(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
     let started = now_millis();
-    if !command_allowed(command) {
-        return json!({"command": command, "success": false, "runner": "local", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Use cargo test/check/fmt/clippy, python -m pytest/build, ruff, mypy, cmake, or ctest unless the operator explicitly extends the allowlist."});
+    if let Some(reason) = command_rejection_reason(command) {
+        return json!({"command": command, "success": false, "runner": "local", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "reason": reason, "remediation": "Use cargo test/check/fmt/clippy, python -m pytest/build, ruff, mypy, cmake, or ctest unless the operator explicitly extends the allowlist."});
     }
     let result = timeout(Duration::from_secs(timeout_secs), Command::new("sh").arg("-lc").arg(command).current_dir(workspace).output()).await;
     command_output_json("local", command, started, timeout_secs, result)
@@ -1632,13 +1872,16 @@ async fn run_command_local(workspace: &Path, command: &str, timeout_secs: u64) -
 
 async fn run_command_in_docker_sandbox(workspace: &Path, command: &str, timeout_secs: u64) -> Value {
     let started = now_millis();
-    if !command_allowed(command) {
-        return json!({"command": command, "success": false, "runner": "docker_sandbox", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "remediation": "Only approved compile/test commands may run in the sandbox."});
+    if let Some(reason) = command_rejection_reason(command) {
+        return json!({"command": command, "success": false, "runner": "docker_sandbox", "duration_ms": 0, "error": "command rejected by Veritas allowlist", "reason": reason, "remediation": "Only approved compile/test commands may run in the sandbox."});
     }
     let image = env::var("VERITAS_SANDBOX_IMAGE").unwrap_or_else(|_| "veritas-sandbox-rust:latest".to_string());
     let memory = env::var("VERITAS_SANDBOX_MEMORY").unwrap_or_else(|_| "2g".to_string());
     let cpus = env::var("VERITAS_SANDBOX_CPUS").unwrap_or_else(|_| "2".to_string());
-    let mount = format!("{}:/workspace", workspace.display());
+    let pids_limit = env::var("VERITAS_SANDBOX_PIDS_LIMIT").unwrap_or_else(|_| "256".to_string());
+    let tmpfs_size = env::var("VERITAS_SANDBOX_TMPFS_SIZE").unwrap_or_else(|_| "256m".to_string());
+    let mount = format!("{}:/workspace:rw", workspace.display());
+    let tmpfs = format!("/tmp:rw,noexec,nosuid,size={tmpfs_size}");
     let result = timeout(
         Duration::from_secs(timeout_secs),
         Command::new("docker")
@@ -1646,6 +1889,11 @@ async fn run_command_in_docker_sandbox(workspace: &Path, command: &str, timeout_
             .arg("--network").arg("none")
             .arg("--cpus").arg(cpus)
             .arg("--memory").arg(memory)
+            .arg("--pids-limit").arg(pids_limit)
+            .arg("--cap-drop").arg("ALL")
+            .arg("--security-opt").arg("no-new-privileges")
+            .arg("--read-only")
+            .arg("--tmpfs").arg(tmpfs)
             .arg("-v").arg(mount)
             .arg("-w").arg("/workspace")
             .arg(image)
@@ -1817,21 +2065,38 @@ async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, u
 }
 
 async fn automatic_shacl_gate(state: &AppState, workspace: &Path, plan: &Value) -> Result<Value, ApiFailure> {
-    let data_ttl = plan_to_turtle(plan);
+    let (data_ttl, graph_context) = collect_shacl_data_ttl(state, plan).await;
     let shapes_ttl = default_shacl_shapes();
+    let data_path = workspace.join("automatic_shacl_data.ttl");
+    let shapes_path = workspace.join("automatic_shacl_shapes.ttl");
+    let _ = fs::write(&data_path, &data_ttl).await;
+    let _ = fs::write(&shapes_path, &shapes_ttl).await;
     let result = run_shacl_validation(state, &data_ttl, &shapes_ttl).await;
     match result {
         Ok(value) => {
             let conforms = value.get("conforms").and_then(Value::as_bool).unwrap_or(true);
             let path = workspace.join("automatic_shacl_report.json");
+            let findings_ttl = shacl_findings_to_turtle(workspace.file_name().and_then(|v| v.to_str()).unwrap_or("automatic"), &value);
+            let findings_path = workspace.join("automatic_shacl_findings.ttl");
             let _ = fs::write(&path, serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())).await;
+            let _ = fs::write(&findings_path, &findings_ttl).await;
             if state.shacl_enforce && !conforms {
-                return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.gate_failed", "Automatic SHACL validation failed before code generation.", "Review automatic_shacl_report.json, fix missing ontology obligations, or run with VERITAS_SHACL_ENFORCE=false for exploratory work only.").with_details(value));
+                return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.gate_failed", "Automatic SHACL validation failed before code generation.", "Review automatic_shacl_report.json and automatic_shacl_findings.ttl, fix missing ontology obligations, or run with VERITAS_SHACL_ENFORCE=false for exploratory work only.").with_details(value));
             }
-            Ok(json!({"ok": true, "enforced": state.shacl_enforce, "conforms": conforms, "report_path": path.display().to_string(), "result": value}))
+            Ok(json!({
+                "ok": true,
+                "enforced": state.shacl_enforce,
+                "conforms": conforms,
+                "report_path": path.display().to_string(),
+                "data_path": data_path.display().to_string(),
+                "shapes_path": shapes_path.display().to_string(),
+                "findings_path": findings_path.display().to_string(),
+                "graph_context": graph_context,
+                "result": value
+            }))
         }
         Err(error) => {
-            let warning = json!({"ok": false, "enforced": state.shacl_enforce, "error": {"code": error.code, "message": error.message, "remediation": error.remediation}});
+            let warning = json!({"ok": false, "enforced": state.shacl_enforce, "graph_context": graph_context, "error": {"code": error.code, "message": error.message, "remediation": error.remediation}});
             if state.shacl_enforce { Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.unavailable", "SHACL validation is enforced but the SHACL service failed.", "Start the SHACL service or set VERITAS_SHACL_ENFORCE=false only for exploratory runs.").with_details(warning)) } else { Ok(warning) }
         }
     }
@@ -1839,18 +2104,98 @@ async fn automatic_shacl_gate(state: &AppState, workspace: &Path, plan: &Value) 
 
 fn plan_to_turtle(plan: &Value) -> String {
     let mut ttl = String::from("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
-    ttl.push_str("<urn:veritas:plan:auto> a veritas:EngineeringPlan ; veritas:hasAcceptanceCriterion <urn:veritas:acceptance:auto> ; veritas:validatedBy <urn:veritas:validation:auto> .\n");
-    ttl.push_str("<urn:veritas:acceptance:auto> a veritas:AcceptanceCriterion .\n<urn:veritas:validation:auto> a veritas:ValidationCheckSpecification .\n");
+    ttl.push_str("<urn:veritas:plan:auto> a veritas:EngineeringPlan, veritas:Plan ; veritas:hasTaskSpecification <urn:veritas:task:auto> ; veritas:hasAcceptanceCriterion <urn:veritas:acceptance:auto> ; veritas:validatedBy <urn:veritas:validation:auto> .\n");
+    ttl.push_str("<urn:veritas:task:auto> a veritas:TaskSpecification .\n<urn:veritas:acceptance:auto> a veritas:AcceptanceCriterion .\n<urn:veritas:validation:auto> a veritas:ValidationCheckSpecification .\n");
     if let Some(risks) = plan.get("risks").and_then(Value::as_array) {
         for (i, _risk) in risks.iter().enumerate() {
             ttl.push_str(&format!("<urn:veritas:risk:auto:{i}> a veritas:Risk ; veritas:mitigatedBy <urn:veritas:mitigation:auto:{i}> .\n<urn:veritas:mitigation:auto:{i}> a veritas:MitigationSpecification .\n"));
+        }
+    }
+    if let Some(symbolic_shadows) = plan.get("symbolic_shadows").and_then(Value::as_array) {
+        for (i, shadow) in symbolic_shadows.iter().enumerate() {
+            let expr = turtle_escape(shadow.get("expression_text").or_else(|| shadow.get("latex")).and_then(Value::as_str).unwrap_or("symbolic shadow"));
+            let status = turtle_escape(shadow.get("human_validation_status").and_then(Value::as_str).unwrap_or("pending_human_review"));
+            ttl.push_str(&format!("<urn:veritas:formula:auto:{i}> a veritas:SymbolicShadow ; veritas:derivedFrom <urn:veritas:evidence:auto:{i}> ; veritas:hasExpressionText \"{expr}\" ; veritas:hasFormulaSource \"planner_context\" ; veritas:hasHumanValidationStatus \"{status}\" ; veritas:hasConfidenceValue \"1.0\"^^xsd:decimal ; veritas:hasFormulaImageStatus \"not_applicable\" ; veritas:hasLatexOcrStatus \"not_required\" .\n<urn:veritas:evidence:auto:{i}> a veritas:EvidenceArtifact .\n"));
+        }
+    }
+    if let Some(math) = plan.get("math_readiness") {
+        ttl.push_str("<urn:veritas:math:auto> a veritas:MathematicalDiscoveryArtifact ; veritas:hasAxiomMap <urn:veritas:axiom-map:auto> ; veritas:hasRepresentationMap <urn:veritas:representation:auto> ; veritas:hasInvariant <urn:veritas:invariant:auto> ; veritas:hasValidationRequirement <urn:veritas:validation:auto> .\n");
+        ttl.push_str("<urn:veritas:axiom-map:auto> a veritas:AxiomMap .\n<urn:veritas:representation:auto> a veritas:RepresentationMap ; veritas:mapsFromSurface <urn:veritas:surface:auto> ; veritas:mapsToLatentStructure <urn:veritas:latent:auto> ; veritas:preservesInvariant <urn:veritas:invariant:auto> .\n<urn:veritas:surface:auto> a veritas:SurfacePhenomenonDescription .\n<urn:veritas:latent:auto> a veritas:LatentStructureDescription .\n<urn:veritas:invariant:auto> a veritas:Invariant ; veritas:hasTransformationFamily <urn:veritas:transformation-family:auto> .\n<urn:veritas:transformation-family:auto> a veritas:TransformationFamily .\n");
+        if math.get("necessity_claim").is_some() {
+            ttl.push_str("<urn:veritas:necessity:auto> a veritas:GenerativeNecessityClaim ; veritas:supportedByEvidence <urn:veritas:evidence:auto:necessity> ; veritas:hasProofStatus \"speculative\" ; veritas:testedByTransferTest <urn:veritas:transfer:auto> .\n<urn:veritas:evidence:auto:necessity> a veritas:EvidenceArtifact .\n<urn:veritas:transfer:auto> a veritas:TransferTestSpecification .\n");
         }
     }
     ttl
 }
 
 fn default_shacl_shapes() -> String {
-    include_str!("../../../packages/ontology/shacl/veritas-core.shacl.ttl").to_string()
+    format!("{}\n\n{}",
+        include_str!("../../../packages/ontology/shacl/veritas-core.shacl.ttl"),
+        include_str!("../../../packages/ontology/shacl/veritas-math.shacl.ttl")
+    )
+}
+
+fn shacl_graph_context_construct_query() -> &'static str {
+    r#"
+PREFIX veritas: <https://github.com/daddydrac/veritas/ontology#>
+CONSTRUCT {
+  ?s ?p ?o .
+}
+WHERE {
+  GRAPH ?g {
+    ?s ?p ?o .
+    FILTER (?g != <urn:veritas:graph:ontology>)
+    FILTER EXISTS { ?s a ?type . FILTER (?type IN (veritas:SymbolicShadow, veritas:MathematicalDiscoveryArtifact, veritas:RepresentationMap, veritas:Invariant, veritas:GenerativeNecessityClaim, veritas:SourceCodeArtifact, veritas:BuildArtifact, veritas:Risk, veritas:Plan, veritas:LoopSpecification)) }
+  }
+}
+LIMIT 1000
+"#
+}
+
+async fn fetch_shacl_graph_context_ttl(state: &AppState) -> Result<String, ApiFailure> {
+    let response = state.http.post(&state.fuseki_query_url)
+        .header("accept", "text/turtle")
+        .form(&[("query", shacl_graph_context_construct_query().to_string())])
+        .send()
+        .await
+        .map_err(|error| ApiFailure::new(StatusCode::BAD_GATEWAY, "shacl.context.transport", format!("Fuseki SHACL context query failed before response: {error}"), "Check Fuseki readiness and graph-store configuration."))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "shacl.context.upstream", format!("Fuseki returned HTTP {} while collecting SHACL context", status.as_u16()), "Check Fuseki logs and whether graphs have been loaded.").with_details(json!({"raw": text})));
+    }
+    Ok(text)
+}
+
+async fn collect_shacl_data_ttl(state: &AppState, plan: &Value) -> (String, Value) {
+    let mut data_ttl = plan_to_turtle(plan);
+    match fetch_shacl_graph_context_ttl(state).await {
+        Ok(context_ttl) if !context_ttl.trim().is_empty() => {
+            data_ttl.push_str("\n# Fuseki graph-derived SHACL context.\n");
+            data_ttl.push_str(&context_ttl);
+            (data_ttl, json!({"ok": true, "source": "fuseki_construct", "bytes": context_ttl.len()}))
+        }
+        Ok(_) => (data_ttl, json!({"ok": true, "source": "fuseki_construct", "bytes": 0, "warning": "No graph-derived SHACL context returned."})),
+        Err(error) => {
+            data_ttl.push_str("\n# Fuseki graph-derived SHACL context unavailable; validating synthetic plan/run obligations only.\n");
+            (data_ttl, json!({"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}))
+        }
+    }
+}
+
+fn shacl_findings_to_turtle(run_id: &str, report: &Value) -> String {
+    let mut ttl = String::from("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    let run = safe_iri_segment(run_id);
+    let conforms = report.get("conforms").and_then(Value::as_bool).unwrap_or(true);
+    if conforms {
+        ttl.push_str(&format!("<urn:veritas:shacl-finding:{run}:conforms> a veritas:Finding ; veritas:derivedFrom <urn:veritas:run:{run}> ; veritas:hasStatus \"closed\" ; veritas:hasDescription \"SHACL validation conformed.\" .\n"));
+        return ttl;
+    }
+    let text = report.get("results_text").and_then(Value::as_str).unwrap_or("SHACL validation failed.");
+    for (idx, line) in text.lines().filter(|line| line.contains("Message:") || line.contains("Focus Node:") || line.contains("Result Path:")).take(50).enumerate() {
+        ttl.push_str(&format!("<urn:veritas:shacl-finding:{run}:{idx}> a veritas:Finding ; veritas:derivedFrom <urn:veritas:run:{run}> ; veritas:hasStatus \"open\" ; veritas:hasDescription \"{}\" .\n", turtle_escape(line.trim())));
+    }
+    ttl
 }
 
 async fn run_shacl_validation(state: &AppState, data_ttl: &str, shapes_ttl: &str) -> Result<Value, ApiFailure> {
@@ -1879,14 +2224,17 @@ async fn upload_run_report_to_fuseki(state: &AppState, run_id: &str, report: &Va
         for (idx, file) in files.iter().enumerate() {
             let path = file.as_str().unwrap_or("");
             if path.is_empty() { continue; }
-            ttl.push_str(&format!("<urn:veritas:source:{}:{}> a veritas:SourceCodeArtifact ; veritas:hasIdentifier \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), idx, turtle_escape(path), safe_iri_segment(run_id)));
+            ttl.push_str(&format!("<urn:veritas:source:{}:{}> a veritas:SourceCodeArtifact ; veritas:hasIdentifier \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> ; veritas:validatedBy <urn:veritas:validation:{}> ; veritas:testedBy <urn:veritas:test:{}:{}> .\n<urn:veritas:test:{}:{}> a veritas:TestSpecification .\n", safe_iri_segment(run_id), idx, turtle_escape(path), safe_iri_segment(run_id), safe_iri_segment(run_id), safe_iri_segment(run_id), idx, safe_iri_segment(run_id), idx));
         }
     }
     if status == "production_candidate_validated" {
-        ttl.push_str(&format!("<urn:veritas:build:{}> a veritas:BuildArtifact ; veritas:hasStatus \"production_candidate_validated\" .\n", safe_iri_segment(run_id)));
+        ttl.push_str(&format!("<urn:veritas:build:{}> a veritas:BuildArtifact ; veritas:hasStatus \"production_candidate_validated\" ; veritas:validatedBy <urn:veritas:validation:{}> ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), safe_iri_segment(run_id), safe_iri_segment(run_id)));
     }
     let run_upload = upload_turtle_to_fuseki(state, &graph_uri, &ttl, true, "text/turtle").await?;
-    let validation_ttl = format!("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n<urn:veritas:validation:{}> a veritas:VerificationResult ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), turtle_escape(status), safe_iri_segment(run_id));
+    let mut validation_ttl = format!("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n<urn:veritas:validation:{}> a veritas:VerificationResult ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), turtle_escape(status), safe_iri_segment(run_id));
+    if let Some(shacl_report) = report.get("automatic_shacl") {
+        validation_ttl.push_str(&shacl_findings_to_turtle(run_id, shacl_report));
+    }
     let validation_upload = upload_turtle_to_fuseki(state, &validation_graph_uri, &validation_ttl, true, "text/turtle").await?;
     Ok(json!({"ok": true, "run_graph_uri": graph_uri, "validation_graph_uri": validation_graph_uri, "run_upload": run_upload, "validation_upload": validation_upload}))
 }
@@ -1981,7 +2329,22 @@ async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -
         .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.event_open", format!("Could not open events log: {error}"), "Check run workspace permissions."))?;
     file.write_all(line.as_bytes()).await
         .map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.event_write", format!("Could not append events log: {error}"), "Check run workspace permissions."))?;
+    append_run_index_event(workspace, &event).await?;
     Ok(())
+}
+
+async fn append_run_index_event(workspace: &Path, event: &Value) -> Result<(), ApiFailure> {
+    let runs_dir = workspace.parent().ok_or_else(|| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "run.index.parent_missing", "Run workspace has no parent runs directory.", "Check VERITAS_RUNS_DIR configuration."))?;
+    let run_id = workspace.file_name().map(|v| v.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
+    let index_event = json!({
+        "run_id": run_id,
+        "workspace": workspace.display().to_string(),
+        "state": event.get("state").cloned().unwrap_or_else(|| json!(null)),
+        "sequence": event.get("sequence").cloned().unwrap_or_else(|| json!(null)),
+        "ts_ms": event.get("ts_ms").cloned().unwrap_or_else(|| json!(now_millis())),
+        "payload": event.get("payload").cloned().unwrap_or_else(|| json!({}))
+    });
+    append_jsonl(&runs_dir.join("run_index.jsonl"), &index_event).await
 }
 
 async fn next_event_sequence(event_file: &Path) -> u64 {
@@ -1992,14 +2355,33 @@ async fn next_event_sequence(event_file: &Path) -> u64 {
 }
 
 fn command_allowed(command: &str) -> bool {
+    command_rejection_reason(command).is_none()
+}
+
+fn command_rejection_reason(command: &str) -> Option<String> {
     let c = command.trim();
+    if c.is_empty() {
+        return Some("command is empty".to_string());
+    }
+    let denied_substrings = [
+        ";", "&&", "||", "|", "`", "$(", "\n", "\r", ">", "<",
+        "rm ", "rm -", "sudo", "curl ", "wget ", ":(){", "mkfs", "dd ",
+        "chmod ", "chown ", "> /etc", "docker ", "podman ", "ssh ", "scp ", "nc ",
+        "bash -c", "sh -c", "python -c", "python3 -c",
+    ];
+    if let Some(token) = denied_substrings.iter().find(|token| c.contains(**token)) {
+        return Some(format!("command contains denied shell/system token: {token}"));
+    }
     let allowed_prefixes = [
         "cargo fmt", "cargo check", "cargo test", "cargo clippy",
         "python -m pytest", "python3 -m pytest", "python -m build", "python3 -m build",
         "ruff", "mypy", "cmake", "ctest"
     ];
-    let denied = ["rm ", "rm -", "sudo", "curl ", "wget ", ":(){", "mkfs", "dd ", "chmod 777", "> /etc", "docker run"];
-    !denied.iter().any(|prefix| c.contains(prefix)) && allowed_prefixes.iter().any(|prefix| c.starts_with(prefix))
+    if allowed_prefixes.iter().any(|prefix| c == *prefix || c.starts_with(&format!("{prefix} "))) {
+        None
+    } else {
+        Some("command does not start with an approved compile/test/static-analysis tool".to_string())
+    }
 }
 
 fn extract_model_content(raw: &Value) -> Option<String> {

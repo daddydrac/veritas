@@ -157,8 +157,56 @@ enum Commands {
         chunks: PathBuf,
         #[arg(long)]
         decision: Option<String>,
+        #[arg(long)]
+        corrected_latex: Option<String>,
         #[arg(long, default_value = "human")]
         reviewer: String,
+    },
+    /// Human review of APA citation metadata in a chunks JSONL file.
+    ReviewCitations {
+        #[arg(long)]
+        chunks: PathBuf,
+        #[arg(long)]
+        decision: String,
+        #[arg(long)]
+        corrected_citation: Option<String>,
+        #[arg(long, default_value = "human")]
+        reviewer: String,
+    },
+    /// Validate formula extraction/review readiness for a chunks JSONL file.
+    ValidateFormulas {
+        #[arg(long)]
+        chunks: PathBuf,
+    },
+    /// Record one human checkpoint decision for citation/formula/representation/plan/code/validation review.
+    ReviewCheckpoint {
+        #[arg(long)]
+        phase: String,
+        #[arg(long)]
+        decision: String,
+        #[arg(long, default_value = "require_high_risk_only")]
+        policy: String,
+        #[arg(long)]
+        artifact_json: Option<String>,
+        #[arg(long, default_value = "human")]
+        reviewer: String,
+        #[arg(long)]
+        notes: Option<String>,
+        #[arg(long)]
+        run_id: Option<String>,
+    },
+    /// Run a full non-interactive human checkpoint workflow for source/mocked or CI review.
+    ReviewWorkflow {
+        #[arg(long, default_value = "require_all")]
+        policy: String,
+        #[arg(long, default_value = "approve")]
+        decision: String,
+        #[arg(long, default_value = "human")]
+        reviewer: String,
+        #[arg(long)]
+        run_id: Option<String>,
+        #[arg(long)]
+        workspace: Option<String>,
     },
     /// Upload the Veritas OWL ontology into Fuseki/Jena.
     UploadOntology {
@@ -398,7 +446,7 @@ async fn main() -> Result<()> {
             http.post(format!("{}/run/{}/resume", cli.api_url, run_id)).send().await,
             "api.run.resume",
         ).await,
-        Commands::ReviewFormulas { chunks, decision, reviewer } => {
+        Commands::ReviewFormulas { chunks, decision, corrected_latex, reviewer } => {
             let mut args = vec!["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "review-formulas", "--chunks"];
             let chunks_str = chunks.to_string_lossy().to_string();
             args.push(&chunks_str);
@@ -408,8 +456,64 @@ async fn main() -> Result<()> {
                 decision_str = value;
                 args.push(&decision_str);
             }
+            let corrected_latex_str;
+            if let Some(value) = corrected_latex {
+                args.push("--corrected-latex");
+                corrected_latex_str = value;
+                args.push(&corrected_latex_str);
+            }
             args.push("--reviewer");
             args.push(&reviewer);
+            run("docker", &args)
+        },
+        Commands::ReviewCitations { chunks, decision, corrected_citation, reviewer } => {
+            let mut args = vec!["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "review-citations", "--chunks"];
+            let chunks_str = chunks.to_string_lossy().to_string();
+            args.push(&chunks_str);
+            args.push("--decision");
+            args.push(&decision);
+            let corrected_citation_str;
+            if let Some(value) = corrected_citation {
+                args.push("--corrected-citation");
+                corrected_citation_str = value;
+                args.push(&corrected_citation_str);
+            }
+            args.push("--reviewer");
+            args.push(&reviewer);
+            run("docker", &args)
+        },
+        Commands::ValidateFormulas { chunks } => {
+            let chunks_str = chunks.to_string_lossy().to_string();
+            run("docker", &["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "validate-formulas", "--chunks", &chunks_str])
+        },
+        Commands::ReviewCheckpoint { phase, decision, policy, artifact_json, reviewer, notes, run_id } => {
+            let mut args = vec!["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "review-checkpoint", "--phase"];
+            args.push(&phase);
+            args.push("--decision");
+            args.push(&decision);
+            args.push("--policy");
+            args.push(&policy);
+            let artifact_json_str;
+            if let Some(value) = artifact_json { args.push("--artifact-json"); artifact_json_str = value; args.push(&artifact_json_str); }
+            args.push("--reviewer");
+            args.push(&reviewer);
+            let notes_str;
+            if let Some(value) = notes { args.push("--notes"); notes_str = value; args.push(&notes_str); }
+            let run_id_str;
+            if let Some(value) = run_id { args.push("--run-id"); run_id_str = value; args.push(&run_id_str); }
+            run("docker", &args)
+        },
+        Commands::ReviewWorkflow { policy, decision, reviewer, run_id, workspace } => {
+            let mut args = vec!["compose", "--env-file", ".veritas/runtime.env", "run", "--rm", "ingestion", "python", "-m", "veritas_ingest.cli", "review-workflow", "--policy"];
+            args.push(&policy);
+            args.push("--decision");
+            args.push(&decision);
+            args.push("--reviewer");
+            args.push(&reviewer);
+            let run_id_str;
+            if let Some(value) = run_id { args.push("--run-id"); run_id_str = value; args.push(&run_id_str); }
+            let workspace_str;
+            if let Some(value) = workspace { args.push("--workspace"); workspace_str = value; args.push(&workspace_str); }
             run("docker", &args)
         },
         Commands::IngestArxiv { query, max_results } => run(

@@ -125,14 +125,99 @@ data/fixtures/sample_math_paper.pdf
 .github/workflows/docker-e2e.yml
 ```
 
+
+## Phase 0 completion update — packaging, validation, and scoring cleanup
+
+Phase 0 separates **source/mocked acceptance** from **live host acceptance**. The project now treats `cargo.check`, `docker.compose.config`, and `live_vllm_smoke` as `host_validation_pending` when Cargo, Docker, or GPU/vLLM runtime are unavailable. Those checks remain required for live host acceptance, but they are not scored as failed source-level checks during mocked/source validation.
+
+Phase 0 also enforces release packaging hygiene. Every shell script under `scripts/` must be executable, and `scripts/check-packaging.sh` fails if any `*.sh` file lacks execute permissions. The GitHub Actions workflow files for Python, Rust, and Docker fake-vLLM E2E are present under `.github/workflows/`.
+
+`scripts/production-acceptance.sh` now supports explicit profiles: `fake-ci`, `single-gpu-prod`, `multi-gpu-prod`, and `remote-model-prod`. The script records whether the run is `mocked_acceptance`, `live_gpu_acceptance`, or `remote_model_acceptance` so the audit trail cannot confuse a source/mocked proof with live GPU/vLLM production proof.
+
+Host-validation markers:
+
+```text
+cargo.check = host_validation_pending
+docker.compose.config = host_validation_pending
+live_vllm_smoke = host_validation_pending
+source/mocked acceptance = active
+live host acceptance = pending host run
+```
+
+
+## Phase 2 completion update — source-mocked control-plane E2E proof
+
+Phase 2 is source/mocked-complete for the planned E2E proof scope. The project now includes `scripts/e2e/source-mocked-control-plane-e2e.py` and `scripts/e2e/source-mocked-control-plane-e2e.sh`, which run without Cargo, Docker, OpenSearch, Fuseki, SHACL, or live vLLM. The harness validates fake planner, math, codegen, repair, human-checkpoint, and run-report payloads against the same JSON Schema contracts used by the API, writes a run workspace, intentionally fails the first validation attempt, applies a repair payload, reruns validation, records `command_audit.jsonl` and `events.jsonl`, and emits a schema-valid `final_report.json` with `production_candidate_validated` status.
+
+This proves the control-plane artifact cascade at source/mocked level while preserving the live-host boundary: Rust compilation, Docker Compose execution, live OpenSearch/Fuseki/SHACL, and live vLLM/GPU validation remain `host_validation_pending` until executed on a proper host. `scripts/validate-host.sh --profile source-mocked` now runs packaging checks, focused Python phase tests, and the source-mocked control-plane E2E before marking source/mocked acceptance complete.
+
 ## Generated audit snapshot
 
-Generated at: 2026-06-11T18:06:44.702346+00:00
+Generated at: 2026-06-11T23:11:34.966790+00:00
 
 ```json
 {
-  "total": 67,
+  "total": 90,
   "failed": 0,
   "unavailable": 2
 }
+```
+
+## Phase 5 completion update — SHACL and mathematical governance
+
+Phase 5 is source/mocked-complete for the planned SHACL/math-governance scope. The automatic SHACL gate now composes both `packages/ontology/shacl/veritas-core.shacl.ttl` and `packages/ontology/shacl/veritas-math.shacl.ttl`, persists the SHACL data/shapes/report/findings artifacts, and records graph-derived SHACL context status. The source/mocked governance proof verifies that complete math-to-code RDF conforms, while incomplete symbolic shadows, incomplete mathematical discovery artifacts, and production-validated build artifacts without validation are blocked.
+
+Command:
+
+```bash
+scripts/e2e/source-mocked-shacl-governance.sh
+```
+
+Live SHACL container execution remains `host_validation_pending` and is intentionally not claimed in the source/mocked scope.
+
+## Phase 3 completion update — execution safety hardening
+
+Phase 3 remains source/mocked-complete. Production-like profiles default to sandbox execution, generated file paths are confined to the run workspace, command policy rejects dangerous shell/system tokens, run locks and run indexes are persisted, and source/mocked resume/cancel tests cover active locks, stale locks, validation-pending resumes, and cancelled-run blocking.
+
+## Phase 4 completion update — retrieval and ontology hardening
+
+Phase 4 remains source/mocked-complete. OpenSearch mapping, vector dimension rejection, versioned alias migration, retrieval fallback, Fuseki named graph discipline, graph-store upload contracts, no-PDF-binary RDF upload, run-report RDF facts, and SPARQL planner fact summaries are validated by the source/mocked retrieval ontology proof.
+
+## Phase 6 completion update — formula OCR and review contracts
+
+Phase 6 is source/mocked-complete for the planned formula OCR and review scope. The ingestion layer now supports command and HTTP LaTeX OCR providers, deterministic mock formula-image rendering for CI/source validation, richer formula image metadata, citation review decisions, formula review decisions, codegen eligibility status, and OpenSearch/Fuseki persistence of those fields.
+
+Command:
+
+```bash
+scripts/e2e/source-mocked-formula-ocr-review.sh
+```
+
+This proves the Formula → Image/OCR → Review → OpenSearch/RDF metadata contract with mocked OCR providers. Live visual OCR quality against a representative arXiv corpus remains `host_validation_pending` because it depends on the target OCR provider, Docling/PyMuPDF behavior, and the paper corpus.
+
+## Phase 7 — Human Review Workflow Audit
+
+Status: source/mocked complete; live host validation remains out of scope for
+this phase.
+
+Implemented:
+
+- Shared human checkpoint state machine.
+- Checkpoint phases for citation, formula, representation, plan, code
+  architecture, and validation review.
+- Policy gate support for `auto_approve`, `require_all`, and
+  `require_high_risk_only`.
+- Rejection and pending required checkpoints block workflow progress.
+- Explicit `skip` with notes records a waiver.
+- Checkpoints persist to `human_checkpoints.jsonl`, `events.jsonl`, RDF/Turtle,
+  search records, and human workflow reports.
+- API `/human/checkpoint` accepts all Phase 7 checkpoint phases and `/status/:run_id`
+  returns checkpoint gate state.
+- Source/mocked proof: `scripts/e2e/source-mocked-human-workflow.sh`.
+
+Validation run expected in this environment:
+
+```bash
+scripts/e2e/source-mocked-human-workflow.sh
+PYTHONPATH=services/ingestion pytest -q tests/ingestion/test_phase7_human_workflow.py
 ```

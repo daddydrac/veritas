@@ -851,3 +851,108 @@ Source-level features: implemented through Pass 5.
 Production proof harness: implemented.
 Live production certification: pending host execution.
 ```
+
+## Phase 2 Feature — Source-Mocked Control-Plane E2E
+
+Phase 2 adds a source-mocked E2E proof for the Veritas control plane. It exercises the same artifact lifecycle expected from `/run` without requiring Cargo, Docker, or live vLLM inside the current environment.
+
+The feature creates a full mocked run workspace containing request, state, events, planner output, math reasoning output, codegen output, simulated validation failure, repair output, simulated passing validation, command audit logs, and a final report. Every model-like output is validated against the role-specific JSON schema. This gives maintainers a fast contract-level proof that structured outputs cascade into the desired business result: generated files and a validated final report.
+
+Command:
+
+```bash
+scripts/e2e/source-mocked-control-plane-e2e.sh
+```
+
+This is a source/mocked acceptance feature. Live Rust, Docker, OpenSearch, Fuseki, SHACL, and vLLM validation remain live-host acceptance gates.
+
+## Phase 3 execution-safety hardening
+
+Phase 3 adds the source/mocked execution-safety layer needed before live Docker validation:
+
+- Production profiles default to the sandbox command runner.
+- Local command execution is blocked in production unless explicitly enabled.
+- Generated files are written through canonical workspace containment checks.
+- Absolute paths, parent-directory traversal, symlink parents, and symlink targets are rejected.
+- Docker sandbox command construction includes network isolation, read-only root, pids/CPU/memory limits, capability drop, no-new-privileges, and tmpfs `/tmp`.
+- Command allowlisting rejects dangerous shell/system tokens before execution.
+- Run state writes a parent `run_index.jsonl` in addition to per-run `state.json` and `events.jsonl`.
+- `/status/:run_id` exposes lock metadata and command audit tail for operational visibility.
+- `scripts/e2e/source-mocked-execution-safety.sh` proves these contracts without Cargo, Docker, or live vLLM.
+
+## Phase 4 Features — Retrieval and Ontology Hardening
+
+Phase 4 adds source-mocked contracts for retrieval and ontology subsystems:
+
+- OpenSearch FAISS/HNSW evidence mapping contract.
+- Explicit keyword/text/nested/knn_vector field discipline.
+- Chunk and formula embedding mapping checks.
+- Versioned OpenSearch index migration simulation.
+- Read/write alias action generation and idempotency checks.
+- Search fallback simulation across read alias, write alias, base index, and versioned index.
+- Fuseki named graph URI discipline for ontology, document, run, and validation graphs.
+- Graph-store upload request construction for Turtle RDF.
+- Rejection of PDF binary payloads in Fuseki graph uploads.
+- Run-report RDF generation for source code, validation, and build artifacts.
+- SPARQL planner fact summary fixtures for the full query pack.
+
+Run:
+
+```bash
+scripts/e2e/source-mocked-retrieval-ontology.sh
+```
+
+## Phase 5 Features — SHACL and Mathematical Governance
+
+Phase 5 adds the source/mocked governance layer for math-to-code readiness:
+
+- Automatic SHACL rule-pack composition from `veritas-core.shacl.ttl` and `veritas-math.shacl.ttl`.
+- Core production rules for plans, risks, source artifacts, build artifacts, loop termination, and findings.
+- Math readiness rules for `SymbolicShadow`, `RepresentationMap`, `Invariant`, `GenerativeNecessityClaim`, and `MathematicalDiscoveryArtifact`.
+- Formula governance fields: normalized expression text, formula image status, LaTeX OCR status, confidence, formula source, and human validation status.
+- Build artifact production gate: `production_candidate_validated` artifacts must link to validation.
+- SHACL findings RDF output as `veritas:Finding` facts with status and descriptions.
+- Source/mocked proof through `scripts/e2e/source-mocked-shacl-governance.sh`.
+
+Business outcome: Veritas blocks mathematically weak formula-to-code transitions at the graph-validation layer. A formula remains a symbolic shadow until the system records its evidence, representation, invariant, validation, transfer/proof, and human-review obligations.
+
+## Phase 6 Features — Formula OCR and Review Contracts
+
+Phase 6 hardens formula handling from a best-effort extraction path into an auditable source/mocked contract:
+
+- Formula image metadata now records renderer, status, confidence, page/bbox status, and image path.
+- `VERITAS_FORMULA_IMAGE_RENDERER=mock` provides deterministic CI/source validation without a real PDF renderer.
+- LaTeX OCR supports `none`, `heuristic`, `command`, and `http` providers.
+- Command and HTTP OCR providers accept raw LaTeX or JSON `{latex, confidence, message}` responses.
+- Formula review supports approve, edit, reject, skip, and auto-approve decisions.
+- Citation review supports approve, edit, reject, incomplete, skip, and auto-approve decisions.
+- Review decisions persist into chunk JSONL, OpenSearch metadata, and Fuseki RDF facts.
+- Formula codegen eligibility is explicit through `use_for_codegen` and `codegen_eligibility_status`.
+- `veritas_ingest.cli validate-formulas` reports missing LaTeX, pending review, missing context, and blocked codegen formulas.
+- `scripts/e2e/source-mocked-formula-ocr-review.sh` proves the full source/mocked OCR/review contract.
+
+Live OCR accuracy remains corpus-dependent and must be validated on the target paper set before claiming extraction accuracy for a production corpus.
+
+## Phase 7 — Human Review UX
+
+Phase 7 adds a complete source/mocked human checkpoint workflow.  Veritas now
+models these checkpoint phases as first-class review states:
+
+```text
+citation_review
+formula_review
+representation_review
+plan_review
+code_architecture_review
+validation_review
+```
+
+Each checkpoint records policy, decision, reviewer, notes, artifact digest,
+blocking status, waiver status, and the reviewed artifact.  Decisions are stored
+in `events.jsonl`, `human_checkpoints.jsonl`, final report fields, RDF/Turtle
+`HumanCheckpoint` facts, and OpenSearch-ready human checkpoint records.
+
+Policy gates support `auto_approve`, `require_all`, and
+`require_high_risk_only`.  A rejected formula blocks code generation.  Missing
+required plan/code/validation approvals block production-candidate status unless
+explicitly waived with a reason.

@@ -39,3 +39,16 @@ veritas:MathematicalDiscoveryArtifactReadinessShape a sh:NodeShape ;
     [ sh:property [ sh:path veritas:hasStatus ; sh:hasValue "speculative" ] ]
   ) ;
   sh:message "A mathematical discovery artifact must identify invariants or be explicitly exploratory/speculative." .
+
+# Phase 5: math-to-code readiness closure. Symbolic expressions remain symbolic
+# shadows until their extraction, human review, representation, invariant, and
+# validation obligations are explicit.
+veritas:SymbolicShadowExtractionReadinessShape a sh:NodeShape ;
+  sh:targetClass veritas:SymbolicShadow ;
+  sh:property [ sh:path veritas:hasFormulaImageStatus ; sh:minCount 1 ; sh:message "SymbolicShadow must record formula image extraction status before math-to-code." ] ;
+  sh:property [ sh:path veritas:hasLatexOcrStatus ; sh:minCount 1 ; sh:message "SymbolicShadow must record LaTeX OCR status before math-to-code." ] ;
+  sh:property [ sh:path veritas:hasNormalizedExpressionText ; sh:minCount 1 ; sh:message "SymbolicShadow must preserve normalized LaTeX/expression text for retrieval and validation." ] .
+
+veritas:MathToCodeValidationRequirementShape a sh:NodeShape ;
+  sh:targetClass veritas:MathematicalDiscoveryArtifact ;
+  sh:property [ sh:path veritas:hasValidationRequirement ; sh:minCount 1 ; sh:message "Math-to-code artifacts must specify validation requirements before code generation." ] .

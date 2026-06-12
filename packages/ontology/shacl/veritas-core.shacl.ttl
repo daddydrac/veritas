@@ -4,7 +4,7 @@
 
 veritas:ResearchObjectiveShape a sh:NodeShape ;
   sh:targetClass veritas:ResearchObjective ;
-  sh:property [ sh:path ^veritas:achievesObjective ; sh:minCount 1 ; sh:message "Every ResearchObjective must be achieved by at least one Plan, Task, Process, or Result." ] .
+  sh:property [ sh:path [ sh:inversePath veritas:achievesObjective ] ; sh:minCount 1 ; sh:message "Every ResearchObjective must be achieved by at least one Plan, Task, Process, or Result." ] .
 
 veritas:PlanShape a sh:NodeShape ;
   sh:targetClass veritas:Plan ;
@@ -79,3 +79,15 @@ veritas:Pass4MathematicalDiscoveryArtifactShape a sh:NodeShape ;
   sh:targetClass veritas:MathematicalDiscoveryArtifact ;
   sh:property [ sh:path veritas:hasAxiomMap ; sh:minCount 1 ; sh:message "Representation-first math artifacts must include Axiom Map references." ] ;
   sh:property [ sh:path veritas:hasRepresentationMap ; sh:minCount 1 ; sh:message "Representation-first math artifacts must include a representation map." ] .
+
+# Phase 5: production governance closure. These rules strengthen source/build and
+# validation-finding obligations without requiring live SHACL execution in tests.
+veritas:ProductionBuildArtifactValidationShape a sh:NodeShape ;
+  sh:targetClass veritas:BuildArtifact ;
+  sh:property [ sh:path veritas:validatedBy ; sh:minCount 1 ; sh:message "BuildArtifact must link to a VerificationResult or ValidationCheckSpecification before production status is accepted." ] .
+
+veritas:ShaclFindingShape a sh:NodeShape ;
+  sh:targetClass veritas:Finding ;
+  sh:property [ sh:path veritas:derivedFrom ; sh:minCount 1 ; sh:message "SHACL Finding must derive from a run, validation report, graph, or evidence artifact." ] ;
+  sh:property [ sh:path veritas:hasStatus ; sh:minCount 1 ; sh:message "SHACL Finding must have status open, closed, waived, or accepted." ] ;
+  sh:property [ sh:path veritas:hasDescription ; sh:minCount 1 ; sh:message "SHACL Finding must include a human-readable message." ] .

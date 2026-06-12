@@ -1825,4 +1825,100 @@
     <veritas:module xml:lang="en">mathematical-research</veritas:module>
   </owl:DatatypeProperty>
 
+  <owl:ObjectProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasValidationRequirement">
+    <rdfs:label xml:lang="en">has validation requirement</rdfs:label>
+    <skos:definition xml:lang="en">Relates a mathematical discovery artifact, plan, source code artifact, or build artifact to an explicit validation requirement that must be satisfied before production acceptance.</skos:definition>
+    <rdfs:range rdf:resource="https://github.com/daddydrac/veritas/ontology#ValidationCheckSpecification"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:ObjectProperty>
+
+  <!-- Phase 6 formula OCR and human-review datatype properties. -->
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaImageEngine">
+    <rdfs:label xml:lang="en">has formula image engine</rdfs:label>
+    <skos:definition xml:lang="en">Records the renderer used to create a formula image, such as pymupdf, mock, or none.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasFormulaImageConfidence">
+    <rdfs:label xml:lang="en">has formula image confidence</rdfs:label>
+    <skos:definition xml:lang="en">Records confidence that a formula image region correctly corresponds to the symbolic shadow.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#decimal"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasBoundingBoxStatus">
+    <rdfs:label xml:lang="en">has bounding box status</rdfs:label>
+    <skos:definition xml:lang="en">Records whether page/bounding-box metadata was available for rendering a formula image.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCitationReviewStatus">
+    <rdfs:label xml:lang="en">has citation review status</rdfs:label>
+    <skos:definition xml:lang="en">Records human review status for an APA-style citation associated with a source document.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCitationHumanValidationStatus">
+    <rdfs:label xml:lang="en">has citation human validation status</rdfs:label>
+    <skos:definition xml:lang="en">Records whether a human accepted or edited the citation used for audit traceability.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasHumanReviewer">
+    <rdfs:label xml:lang="en">has human reviewer</rdfs:label>
+    <skos:definition xml:lang="en">Records the human or configured review authority that made an approval, edit, reject, or waiver decision.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCodegenEligibilityStatus">
+    <rdfs:label xml:lang="en">has codegen eligibility status</rdfs:label>
+    <skos:definition xml:lang="en">Records whether a symbolic shadow is eligible, blocked, or pending for code generation.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#isEligibleForCodegen">
+    <rdfs:label xml:lang="en">is eligible for code generation</rdfs:label>
+    <skos:definition xml:lang="en">Records whether a symbolic shadow may be used as input to production code generation after review and validation gates.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+    <veritas:module xml:lang="en">mathematical-research</veritas:module>
+  </owl:DatatypeProperty>
+
+
+  <!-- Phase 7 human-checkpoint workflow ontology terms. -->
+  <owl:Class rdf:about="https://github.com/daddydrac/veritas/ontology#HumanCheckpoint">
+    <rdfs:label xml:lang="en">Human checkpoint</rdfs:label>
+    <skos:definition xml:lang="en">A human-in-the-loop review event that records approval, edit, rejection, waiver, or request-for-explanation over a citation, formula, representation, plan, code architecture, or validation artifact.</skos:definition>
+    <rdfs:subClassOf rdf:resource="https://github.com/daddydrac/veritas/ontology#ValidationCheckSpecification"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:Class>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasCheckpointPhase">
+    <rdfs:label xml:lang="en">has checkpoint phase</rdfs:label>
+    <skos:definition xml:lang="en">Records the workflow phase reviewed by a human checkpoint, such as citation_review, formula_review, representation_review, plan_review, code_architecture_review, or validation_review.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasHumanDecision">
+    <rdfs:label xml:lang="en">has human decision</rdfs:label>
+    <skos:definition xml:lang="en">Records the human checkpoint decision: approve, edit, reject, skip, auto_approve, pending, or ask_for_explanation.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#isRequiredHumanCheckpoint">
+    <rdfs:label xml:lang="en">is required human checkpoint</rdfs:label>
+    <skos:definition xml:lang="en">Records whether a human checkpoint is required by the configured review policy before workflow progress or production-candidate status.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#blocksWorkflowProgress">
+    <rdfs:label xml:lang="en">blocks workflow progress</rdfs:label>
+    <skos:definition xml:lang="en">Records whether a human checkpoint currently blocks a transition, such as formula-to-code, plan-to-execution, or validation-to-production-candidate.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="https://github.com/daddydrac/veritas/ontology#hasArtifactDigest">
+    <rdfs:label xml:lang="en">has artifact digest</rdfs:label>
+    <skos:definition xml:lang="en">Records a stable digest of the artifact reviewed by a human checkpoint so that approval decisions remain traceable to exact content.</skos:definition>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <veritas:module xml:lang="en">evidence-validation</veritas:module>
+  </owl:DatatypeProperty>
+
 </rdf:RDF>
