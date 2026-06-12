@@ -189,3 +189,50 @@ Phase 2 increases source/mocked confidence without claiming that Rust compilatio
 
 See `FEATURE_SCORECARD.md` for the generated feature table.
 <!-- PHASE8_SCORECARD:END -->
+
+
+## Phase 1 Real Journey Orchestrator
+
+| Capability | Status | Evidence |
+|---|---|---|
+| `/journey/run` API route | Implemented | `apps/api/src/main.rs`, `apps/api/src/journey.rs` |
+| Journey status/review/resume/report API routes | Implemented | `apps/api/src/main.rs`, `apps/api/src/journey.rs` |
+| CLI `veritas journey ...` commands | Implemented | `apps/cli/src/main.rs` |
+| Journey lifecycle artifacts | Implemented | `journey_request.json`, `source_manifest.json`, `journey_state.json`, `journey_lifecycle.jsonl`, `journey_report.json` |
+| Real run-core delegation | Implemented | `execute_autonomous_run_core` is called from journey orchestrator |
+| Real local ingestion before planning | Implemented source-level | Local backend writes real PDF-derived manifests; Journey blocks before planning when embeddings are unavailable |
+
+
+## Phase 2 — Real Local Ingestion Backend
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Local PDF parsing without service DNS | implemented and Python-tested | `services/ingestion/veritas_ingest/cli.py`, `local_backend.py`, `test_phase2_real_local_ingestion_backend.py` |
+| Evidence manifest generation | implemented and Python-tested | `evidence_manifest.json` created by local backend |
+| Formula/citation manifest generation | implemented and Python-tested | `formula_manifest.json`, `citation_manifest.json` |
+| User-visible review queue | implemented and Python-tested | `review_queue.json` |
+| RDF/Turtle local graph output | implemented and Python-tested | `evidence.ttl` |
+| Local lexical index | implemented and Python-tested | `local_lexical_index.jsonl` |
+| Local vector index with no fake embeddings | implemented and Python-tested | `local_vector_index.jsonl` remains empty and planning blocks when no real embedding provider is configured |
+| Journey blocks before planning when retrieval is unavailable | source-level implemented | `apps/api/src/journey.rs` returns `blocked_by_retrieval_unavailable` before `execute_autonomous_run_core` |
+| Live Rust/API journey execution | host_validation_pending | Requires Cargo/API host execution |
+
+| PHASE3_EVIDENCE_ELIGIBILITY_REGISTRY | Source/Python | Implemented | `evidence_registry.json`, `evidence_eligibility.json`, formula/citation review refresh, `/math-to-code` registry gate, journey planning gate |
+
+
+## Evidence Eligibility Registry
+
+Phase 3 adds the real Evidence Eligibility Registry. Local ingestion writes `evidence_registry.json` and `evidence_eligibility.json`; formula/citation review decisions are normalized into authoritative planning/codegen gates. A rejected or pending formula blocks `/math-to-code`; an unreviewed citation blocks production-bound evidence-backed planning. Request-level approval booleans are not authoritative.
+
+
+## Phase 4 — Pre-Execution Gate Engine
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Gate engine before codegen | Implemented | `apps/api/src/main.rs` invokes `gates::run_pre_codegen_gates` before code generation. |
+| Evidence gate | Implemented | `apps/api/src/gates/evidence.rs` reads `evidence_registry.json` and blocks if production evidence is not eligible. |
+| Human pre-codegen gates | Implemented | `apps/api/src/gates/human.rs` requires `plan_review` and `code_architecture_review` unless policy/config disables them. |
+| Representation gate | Implemented | `apps/api/src/gates/representation.rs` blocks math-heavy runs without `representation_model.json`. |
+| Math-tool gate | Implemented as enforcement boundary | `apps/api/src/gates/math_tools.rs` blocks math-heavy runs until real math validation artifacts exist. |
+| SHACL pre-codegen gate | Implemented | `apps/api/src/gates/shacl.rs` blocks enforced SHACL failures before codegen. |
+| Blocked final report | Implemented | `apps/api/src/gates/mod.rs` writes `pre_codegen_blocked_report.json` and `final_report.json` with no files or commands. |

@@ -26,9 +26,11 @@ from .citations import citation_from_metadata
 from .ontology import upload_ontology
 from .planning import build_evidence_backed_plan
 from .sinks import chunks_to_turtle, document_graph_uri, index_chunks, upload_turtle_to_fuseki
+from .local_backend import prepare_local_config, write_local_outputs
+from .evidence_registry import refresh_workspace_registry, load_registry, formula_gate, planning_gate
 
 
-def _service_config(cfg: dict) -> tuple[str, str, str, str]:
+def _service_config(cfg: dict) -> dict:
     """Return configured storage endpoints.
 
     Acceptance criteria:
@@ -37,6 +39,7 @@ def _service_config(cfg: dict) -> tuple[str, str, str, str]:
         3. Return all values needed to write search and graph outputs.
     """
 
+    backend = os.getenv("VERITAS_INGEST_BACKEND", str(cfg.get("ingestion", {}).get("backend", "opensearch_fuseki"))).strip().lower()
     opensearch_url = os.getenv("VERITAS_OPENSEARCH_URL", "http://opensearch:9200")
     index = os.getenv("VERITAS_OPENSEARCH_INDEX", "veritas-papers")
     graph_url = os.getenv("VERITAS_FUSEKI_GRAPH_URL", "http://fuseki:3030/veritas/data")
@@ -44,7 +47,13 @@ def _service_config(cfg: dict) -> tuple[str, str, str, str]:
         "graph_uri",
         "https://github.com/daddydrac/veritas/graph/research",
     )
-    return opensearch_url, index, graph_url, graph_uri
+    return {
+        "backend": backend,
+        "opensearch_url": opensearch_url,
+        "index": index,
+        "graph_url": graph_url,
+        "graph_uri": graph_uri,
+    }
 
 
 def _ingest_pdf(
@@ -120,7 +129,7 @@ def _ingest_pdf(
     return paper_chunks
 
 
-def _write_outputs(chunks: list[dict], cfg: dict) -> None:
+def _write_outputs(chunks: list[dict], cfg: dict, *, backend: str | None = None, workspace: Path | None = None, paper_id: str | None = None, source_pdf: Path | None = None, require_local_embeddings: bool = False) -> dict:
     """Write chunks to OpenSearch and Jena/Fuseki.
 
     Acceptance criteria:
@@ -129,9 +138,33 @@ def _write_outputs(chunks: list[dict], cfg: dict) -> None:
         3. Persist the latest Turtle graph for auditability.
     """
 
-    opensearch_url, index, graph_url, graph_uri = _service_config(cfg)
+    service_cfg = _service_config(cfg)
+    selected_backend = (backend or service_cfg["backend"] or "opensearch_fuseki").strip().lower()
     chunks_dir = Path(cfg["ingestion"]["outputs"]["chunks_dir"])
+    if workspace is not None:
+        chunks_dir = Path(workspace)
     chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    if selected_backend == "local":
+        if paper_id is None:
+            paper_id = str(chunks[0].get("paper_id", "local_document")) if chunks else "local_document"
+        if source_pdf is None:
+            source_pdf = Path(str(chunks[0].get("metadata", {}).get("pdf_path", paper_id))) if chunks else Path(paper_id)
+        local_workspace = workspace or chunks_dir
+        print(f"[veritas] writing real local ingestion backend outputs to {local_workspace}")
+        result = write_local_outputs(
+            chunks=chunks,
+            cfg=cfg,
+            workspace=local_workspace,
+            source_pdf=source_pdf,
+            paper_id=paper_id,
+        )
+        return result
+
+    opensearch_url = service_cfg["opensearch_url"]
+    index = service_cfg["index"]
+    graph_url = service_cfg["graph_url"]
+    graph_uri = service_cfg["graph_uri"]
 
     print(f"[veritas] embedding {len(chunks)} chunks with normalized SBERT vectors")
     try:
@@ -180,10 +213,24 @@ def _write_outputs(chunks: list[dict], cfg: dict) -> None:
 
     (chunks_dir / "latest-ingest.ttl").write_text("\n\n".join(latest_ttls), encoding="utf-8")
     (chunks_dir / "latest-fuseki-upload-manifest.json").write_text(json.dumps(upload_manifest, indent=2), encoding="utf-8")
+    return {"ok": True, "backend": "opensearch_fuseki", "chunks": len(chunks), "index": index, "fuseki_uploads": upload_manifest}
+
+
+def _registry_workspace_for_chunks(path: Path) -> Path:
+    """Resolve the real workspace containing chunks.jsonl for registry refresh."""
+    return path.resolve().parent
+
+
+def _refresh_registry_for_chunks(path: Path) -> dict:
+    workspace = _registry_workspace_for_chunks(path)
+    registry = refresh_workspace_registry(workspace, refresh_from_chunks=True)
+    return registry
 
 
 def cmd_ingest_arxiv(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
+    if getattr(args, "backend", None) == "local":
+        cfg = prepare_local_config(cfg, output_dir=Path(args.workspace) if getattr(args, "workspace", None) else None)
     ing = cfg["ingestion"]
     arx = ing["arxiv"]
     out = ing["outputs"]
@@ -221,10 +268,10 @@ def cmd_ingest_arxiv(args: argparse.Namespace) -> None:
         )
         all_chunks.extend(paper_chunks)
 
-    _write_outputs(all_chunks, cfg)
+    output = _write_outputs(all_chunks, cfg, backend=args.backend, workspace=Path(args.workspace) if getattr(args, "workspace", None) else None, require_local_embeddings=getattr(args, "require_local_embeddings", False))
     print(
         json.dumps(
-            {"ok": True, "papers": len(papers), "chunks": len(all_chunks)},
+            {"ok": True, "papers": len(papers), "chunks": len(all_chunks), "output": output},
             indent=2,
         )
     )
@@ -232,6 +279,8 @@ def cmd_ingest_arxiv(args: argparse.Namespace) -> None:
 
 def cmd_ingest_pdf(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
+    if getattr(args, "backend", None) == "local":
+        cfg = prepare_local_config(cfg, output_dir=Path(args.workspace) if getattr(args, "workspace", None) else None)
     pdf = Path(args.path)
     paper_id = args.paper_id or pdf.stem
     metadata = {
@@ -251,8 +300,16 @@ def cmd_ingest_pdf(args: argparse.Namespace) -> None:
         "\n".join(json.dumps(c, ensure_ascii=False) for c in chunks),
         encoding="utf-8",
     )
-    _write_outputs(chunks, cfg)
-    print(json.dumps({"ok": True, "papers": 1, "chunks": len(chunks)}, indent=2))
+    output = _write_outputs(
+        chunks,
+        cfg,
+        backend=args.backend,
+        workspace=Path(args.workspace) if args.workspace else None,
+        paper_id=paper_id,
+        source_pdf=pdf,
+        require_local_embeddings=args.require_local_embeddings,
+    )
+    print(json.dumps({"ok": True, "papers": 1, "chunks": len(chunks), "output": output}, indent=2))
 
 
 
@@ -274,6 +331,9 @@ def cmd_review_formulas(args: argparse.Namespace) -> None:
             output=Path(args.output) if args.output else None,
             corrected_latex=args.corrected_latex,
         )
+        registry = _maybe_refresh_registry_for_chunks(Path(args.output) if args.output else path)
+        if registry is not None:
+            result["evidence_registry"] = {"path": str((Path(args.output) if args.output else path).parent / "evidence_registry.json"), "summary": registry.get("summary"), "planning": registry.get("planning")}
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
@@ -302,7 +362,11 @@ def cmd_review_formulas(args: argparse.Namespace) -> None:
         reviewed += 1
     target = Path(args.output) if args.output else path
     write_chunks_jsonl(target, chunks)
-    print(json.dumps({"ok": True, "formulas_reviewed": reviewed, "path": str(target), "summary": review_summary(chunks)}, indent=2, ensure_ascii=False))
+    payload = {"ok": True, "formulas_reviewed": reviewed, "path": str(target), "summary": review_summary(chunks)}
+    registry = _maybe_refresh_registry_for_chunks(target)
+    if registry is not None:
+        payload["evidence_registry"] = {"path": str(target.parent / "evidence_registry.json"), "summary": registry.get("summary"), "planning": registry.get("planning")}
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 def cmd_review_citations(args: argparse.Namespace) -> None:
@@ -314,6 +378,9 @@ def cmd_review_citations(args: argparse.Namespace) -> None:
         output=Path(args.output) if args.output else None,
         corrected_citation=args.corrected_citation,
     )
+    registry = _maybe_refresh_registry_for_chunks(Path(args.output) if args.output else path)
+    if registry is not None:
+        result["evidence_registry"] = {"path": str((Path(args.output) if args.output else path).parent / "evidence_registry.json"), "summary": registry.get("summary"), "planning": registry.get("planning")}
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
@@ -335,6 +402,29 @@ def cmd_validate_formulas(args: argparse.Namespace) -> None:
         "summary": review_summary(chunks),
     }
     print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def _maybe_refresh_registry_for_chunks(chunks_path: Path) -> dict | None:
+    workspace = chunks_path.parent
+    if (workspace / "evidence_manifest.json").exists():
+        return refresh_workspace_registry(workspace, refresh_from_chunks=True)
+    return None
+
+
+def cmd_build_evidence_registry(args: argparse.Namespace) -> None:
+    workspace = Path(args.workspace)
+    registry = refresh_workspace_registry(workspace, refresh_from_chunks=args.refresh_from_chunks)
+    print(json.dumps({"ok": True, "workspace": str(workspace), "registry_path": str(workspace / "evidence_registry.json"), "registry": registry}, indent=2, ensure_ascii=False))
+
+
+def cmd_evidence_gate(args: argparse.Namespace) -> None:
+    workspace = Path(args.workspace)
+    registry = refresh_workspace_registry(workspace, refresh_from_chunks=args.refresh_from_chunks)
+    if args.kind == "planning":
+        gate = planning_gate(registry)
+    else:
+        gate = formula_gate(registry, args.formula_id, args.citation_id)
+    print(json.dumps({"ok": bool(gate.get("ok")), "workspace": str(workspace), "kind": args.kind, "gate": gate, "registry_path": str(workspace / "evidence_registry.json")}, indent=2, ensure_ascii=False))
 
 
 def cmd_review_checkpoint(args: argparse.Namespace) -> None:
@@ -376,6 +466,22 @@ def cmd_phase7_source_mocked(args: argparse.Namespace) -> None:
     summary = source_mocked_phase7_summary(Path(args.workspace) if args.workspace else None)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
+def cmd_evidence_registry(args: argparse.Namespace) -> None:
+    workspace = Path(args.workspace)
+    registry = refresh_workspace_registry(workspace, refresh_from_chunks=args.refresh_from_chunks)
+    payload = {
+        "ok": True,
+        "workspace": str(workspace),
+        "evidence_registry_path": str(workspace / "evidence_registry.json"),
+        "evidence_eligibility_path": str(workspace / "evidence_eligibility.json"),
+        "registry": registry,
+        "planning_gate": planning_gate(registry),
+    }
+    if args.formula_id:
+        payload["formula_gate"] = formula_gate(registry, args.formula_id, args.citation_id)
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
 def cmd_upload_ontology(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
     path = Path(args.path or cfg["ontology"].get("file", "/workspace/ontology/veritas.owl"))
@@ -414,6 +520,9 @@ def main() -> None:
     p_arxiv = sub.add_parser("ingest-arxiv")
     p_arxiv.add_argument("--query", required=False)
     p_arxiv.add_argument("--max-results", type=int, required=False)
+    p_arxiv.add_argument("--backend", choices=["opensearch_fuseki", "local"], default=None)
+    p_arxiv.add_argument("--workspace", required=False)
+    p_arxiv.add_argument("--require-local-embeddings", action="store_true")
     p_arxiv.set_defaults(func=cmd_ingest_arxiv)
 
     p_pdf = sub.add_parser("ingest-pdf")
@@ -421,6 +530,9 @@ def main() -> None:
     p_pdf.add_argument("--paper-id", required=False)
     p_pdf.add_argument("--title", required=False)
     p_pdf.add_argument("--summary", required=False)
+    p_pdf.add_argument("--backend", choices=["opensearch_fuseki", "local"], default=None)
+    p_pdf.add_argument("--workspace", required=False)
+    p_pdf.add_argument("--require-local-embeddings", action="store_true")
     p_pdf.set_defaults(func=cmd_ingest_pdf)
 
     p_onto = sub.add_parser("upload-ontology")
@@ -477,9 +589,23 @@ def main() -> None:
     p_phase7.add_argument("--workspace", required=False)
     p_phase7.set_defaults(func=cmd_phase7_source_mocked)
 
+
+    p_registry = sub.add_parser("build-evidence-registry")
+    p_registry.add_argument("--workspace", required=True)
+    p_registry.add_argument("--write", action="store_true", default=True)
+    p_registry.add_argument("--refresh-from-chunks", action="store_true")
+    p_registry.set_defaults(func=cmd_build_evidence_registry)
+
     p_validate_formulas = sub.add_parser("validate-formulas")
     p_validate_formulas.add_argument("--chunks", required=True)
     p_validate_formulas.set_defaults(func=cmd_validate_formulas)
+
+    p_registry = sub.add_parser("evidence-registry")
+    p_registry.add_argument("--workspace", required=True)
+    p_registry.add_argument("--refresh-from-chunks", action="store_true")
+    p_registry.add_argument("--formula-id", required=False)
+    p_registry.add_argument("--citation-id", required=False)
+    p_registry.set_defaults(func=cmd_evidence_registry)
 
     args = parser.parse_args()
     try:

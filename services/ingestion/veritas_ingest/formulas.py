@@ -21,6 +21,10 @@ MATH_SIGNAL_RE = re.compile(
     r"(\\[a-zA-Z]+|[_^{}=+\-*/]|\d+\s*[a-zA-Z]|[a-zA-Z]\s*[=<>])"
 )
 
+BARE_EQUATION_RE = re.compile(
+    r"(?m)^(?P<body>(?=.{6,240}$)(?=.*=)(?=.*[A-Za-z])(?=.*[()_{}\[\]\^+\-*/]).+?)\.?$"
+)
+
 
 @dataclass(frozen=True)
 class Formula:
@@ -107,6 +111,32 @@ def extract_formulas(text: str, context_window: int = 650) -> list[dict]:
                     confidence=_confidence(pattern_name, body),
                 )
             )
+
+    # PDFs converted through pypdf/Docling often expose formulas as plain text
+    # lines rather than LaTeX-delimited blocks, e.g.
+    # L(theta) = E_{q_theta(z)}[log p(x,z) - log q_theta(z)].
+    # Capture those auditable bare equations so local ingestion can present them
+    # for human review instead of silently producing zero formulas.
+    for match in BARE_EQUATION_RE.finditer(text):
+        start, end = match.span()
+        if any(max(start, s) < min(end, e) for s, e in seen):
+            continue
+        body = match.group("body").strip().rstrip(".")
+        if not _is_probably_math(body, "bare_equation"):
+            continue
+        seen.append((start, end))
+        formulas.append(
+            Formula(
+                latex=body,
+                raw_latex=match.group(0).strip(),
+                start=start,
+                end=end,
+                context_before=text[max(0, start - context_window) : start].strip(),
+                context_after=text[end : min(len(text), end + context_window)].strip(),
+                pattern="bare_equation_line",
+                confidence=0.62,
+            )
+        )
     formulas.sort(key=lambda f: f.start)
     return [asdict(f) for f in formulas]
 
