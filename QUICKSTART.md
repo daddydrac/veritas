@@ -1,34 +1,75 @@
 # Veritas Quickstart
 
-This guide starts Veritas with Docker Compose, configures vLLM model routing,
-uploads the OWL ontology, ingests research PDFs, and begins prompting the system.
+This quickstart has two runnable paths:
+
+1. **Source/mocked acceptance** — runs without Cargo, Docker, or live vLLM. Use this in this sandbox or any Python-only environment to verify the control-plane contracts, scorecard, documentation, and mocked E2E harness.
+2. **Docker/live acceptance** — runs on your workstation or server with Docker, and optionally GPUs/vLLM.
+
+The current scoped acceptance intentionally skips only these live-host dimensions when the `source-mocked` profile is used: Rust/Cargo validation, Docker E2E execution, and live vLLM/GPU validation. Everything else remains source/mocked tested.
+
+---
 
 ## 1. Prerequisites
 
-Install:
+For source/mocked acceptance:
 
-- Docker
-- Docker Compose v2
-- `curl`
-- `jq` recommended
+```bash
+python3 --version
+python3 -m pip install --upgrade pip
+python3 -m pip install pytest pyyaml rdflib jsonschema
+```
 
-For local vLLM model serving, install NVIDIA Container Toolkit and verify GPU
-access:
+For Docker/live acceptance, also install:
+
+```text
+Docker
+Docker Compose v2
+curl
+jq
+NVIDIA Container Toolkit, if running local GPU vLLM
+```
+
+GPU smoke check for live vLLM profiles:
 
 ```bash
 docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
-You can run ingestion/search without local vLLM models, but planning and code
-writing are much more useful when a vLLM role is running.
+---
 
-## 2. Configure Veritas
+## 2. Source/mocked verification path
 
-Create defaults:
+Run this first after unzipping the repo. It verifies packaging, Python services, source/mocked E2E harnesses, SHACL/math governance contracts, formula OCR/review contracts, human checkpoint contracts, validation spec, and generated feature scorecard.
 
 ```bash
-cp .env.example .env
+scripts/check-packaging.sh
+python3 -m compileall services/embedding services/ingestion services/shacl tests/fakes scripts/e2e
+PYTHONPATH=services/ingestion PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/ingestion --disable-warnings
+python3 scripts/validate-spec.py
+scripts/production-acceptance.sh --profile source-mocked
+scripts/e2e/source-mocked-scorecard.sh
 ```
+
+Expected result:
+
+```text
+validate-spec: ok=true, failed=0
+production acceptance: mocked_acceptance
+scorecard: source_mocked_ready
+```
+
+Generated scorecard outputs:
+
+```text
+data/scorecard/feature-scorecard.json
+FEATURE_SCORECARD.md
+```
+
+---
+
+## 3. Configure Veritas for Docker/live use
+
+Do **not** copy or hand-maintain legacy environment template files; Veritas is configured through the CLI and generated `.veritas` files.
 
 Interactive setup:
 
@@ -42,15 +83,29 @@ The wizard asks for:
 Planner model        default Qwen/Qwen2.5-Coder-7B-Instruct
 Code model           default Qwen/Qwen2.5-Coder-14B-Instruct
 Code fallback        default deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct
-Math model           default allenai/Olmo-3-7B-Instruct or 32B option
+Math model           default OLMo/OLMo-style instruct model or custom HF ID
 Embedding model      default Muennighoff/SBERT-base-nli-v2
 Hugging Face token   optional
-GPU id               default 0
+GPU layout           role-specific IDs, tensor parallel, pipeline parallel, memory utilization
+OpenSearch URL       default http://opensearch:9200 inside Compose
+Fuseki URL           default http://fuseki:3030 inside Compose
+SHACL URL            default http://shacl:8090 inside Compose
+Human review policy  auto_approve, require_all, or require_high_risk_only
 ```
 
-You can paste any Hugging Face model ID supported by vLLM.
+Generated files:
 
-## 3. Start core services
+```text
+.veritas/config.yaml
+.veritas/runtime.env
+.veritas/docker-compose.override.yaml
+```
+
+---
+
+## 4. Start core services
+
+For the normal service stack:
 
 ```bash
 ./scripts/bootstrap.sh
@@ -62,19 +117,22 @@ This starts:
 OpenSearch
 OpenSearch Dashboards
 Jena Fuseki
+SHACL validator
 SBERT embedding service
 Veritas API
+Veritas CLI service
 ```
-
-It also uploads the Veritas OWL ontology into Fuseki.
 
 Check readiness:
 
 ```bash
 curl -s http://localhost:8080/ready | jq
+curl -s http://localhost:8080/health | jq
 ```
 
-## 4. Start vLLM model serving
+---
+
+## 5. Start vLLM model serving
 
 Planner only:
 
@@ -100,23 +158,36 @@ All local model roles:
 docker compose --profile models --profile code-model --profile math-model up -d
 ```
 
-Show model routing:
+Show model routing and provider health:
 
 ```bash
 docker compose run --rm cli models
+curl -s http://localhost:8080/models | jq
 ```
 
-## 5. Open the guided CLI startup screen
+For live GPU production acceptance:
+
+```bash
+scripts/production-acceptance.sh --profile single-gpu-prod
+# or
+scripts/production-acceptance.sh --profile multi-gpu-prod
+```
+
+---
+
+## 6. Open the guided CLI startup screen
 
 ```bash
 docker compose run --rm cli welcome
 ```
 
-The startup screen prints the Veritas ASCII logo, tagline, service readiness,
-knowledge-graph status, model routing, workflow menu, and mode guidance. This is
-the intended non-coder entry point.
+The startup screen prints the Veritas logo, tagline, service readiness, knowledge-graph status, model routing, workflow menu, and mode guidance.
 
-## 6. Upload or refresh the ontology
+---
+
+## 7. Upload or refresh the ontology
+
+Upload the bundled ontology:
 
 ```bash
 docker compose run --rm cli upload-ontology
@@ -128,7 +199,13 @@ Upload a custom OWL/RDF/Turtle file:
 docker compose run --rm cli upload-ontology --path ./my-ontology.owl
 ```
 
-## 7. Ingest arXiv PDFs
+Fuseki stores ontology and project facts in named graphs. PDFs themselves are not uploaded into Fuseki; semantic facts, citations, chunks, formulas, run facts, validation findings, and artifact links are uploaded.
+
+---
+
+## 8. Ingest research papers
+
+arXiv ingestion:
 
 ```bash
 docker compose run --rm cli ingest-arxiv \
@@ -136,27 +213,46 @@ docker compose run --rm cli ingest-arxiv \
   --max-results 3
 ```
 
-Pipeline:
-
-```text
-arXiv search
-→ PDF download
-→ Docling-first parse
-→ formula extraction
-→ formula-safe chunks
-→ normalized SBERT embeddings
-→ OpenSearch FAISS/HNSW index
-→ Jena/Fuseki RDF graph upload
-```
-
-## 8. Upload a local PDF
+Local PDF ingestion:
 
 ```bash
 docker compose run --rm cli ingest-pdf --path ./paper.pdf
 ```
 
-The CLI stages the PDF into `data/papers/uploads/` and runs ingestion inside the
-Docker network.
+Pipeline:
+
+```text
+PDF/arXiv metadata
+→ APA citation generation and review state
+→ Docling-first parsing with fallback extraction
+→ formula candidates, image metadata, OCR status, normalized LaTeX
+→ 25-word prose chunks up to the nearest period/semicolon
+→ formula-preserving chunks
+→ normalized SBERT embeddings
+→ OpenSearch FAISS/HNSW index
+→ Fuseki RDF named-graph upload
+→ SHACL core + math governance checks
+```
+
+Review extracted formulas:
+
+```bash
+docker compose run --rm cli review-formulas --chunks data/chunks/latest.chunks.jsonl
+```
+
+Review citations:
+
+```bash
+docker compose run --rm cli review-citations --chunks data/chunks/latest.chunks.jsonl
+```
+
+Validate formula extraction quality:
+
+```bash
+docker compose run --rm cli validate-formulas --chunks data/chunks/latest.chunks.jsonl
+```
+
+---
 
 ## 9. Search evidence
 
@@ -169,11 +265,13 @@ docker compose run --rm cli search \
   --size 5
 ```
 
-Lexical/formula search:
+Formula search:
 
 ```bash
 docker compose run --rm cli search "E = mc^2" --mode lexical --size 5
 ```
+
+---
 
 ## 10. Query the ontology graph
 
@@ -192,6 +290,20 @@ LIMIT 20
 '
 ```
 
+List graphs:
+
+```bash
+docker compose run --rm cli graph-list
+```
+
+Describe a graph:
+
+```bash
+docker compose run --rm cli graph-describe urn:veritas:graph:ontology
+```
+
+---
+
 ## 11. Ask Veritas to plan from research evidence
 
 ```bash
@@ -199,8 +311,9 @@ docker compose run --rm cli ask \
   "Use the indexed papers to design a tested Rust implementation of the main method."
 ```
 
-The planner retrieves OpenSearch evidence, queries Fuseki/Jena for formula
-traceability, and calls the configured planner vLLM model when available.
+The planner retrieves OpenSearch evidence, queries Fuseki/Jena for formula and project facts, runs SHACL gating where required, and calls the configured planner provider. Model outputs must satisfy structured JSON schemas before execution.
+
+---
 
 ## 12. Run autonomous code generation and validation
 
@@ -208,32 +321,95 @@ traceability, and calls the configured planner vLLM model when available.
 docker compose run --rm cli run \
   "Implement the strongest indexed method as a tested package with CPU-safe implementation and GPU extension points." \
   --language rust
+```
 
-# alias that calls the same /run endpoint
+Alias:
+
+```bash
 docker compose run --rm cli generate-code \
   --language rust \
   --prompt "Implement the strongest indexed method as a tested package with CPU-safe implementation and GPU extension points."
 ```
 
-The autonomous run creates a workspace under:
+The run creates a workspace under:
 
 ```text
 data/runs/run-*/
 ```
 
-The run report includes the files changed, commands run, validation results, retry history, and final status. The generated package status changes to `production_candidate_validated` only when compile/test commands pass. Each workspace includes:
+Important files:
 
 ```text
-README.md
-VALIDATION_REPORT.md
-EVIDENCE.md
+request.json
+state.json
+events.jsonl
+command_audit.jsonl
+human_checkpoints.jsonl
 final_report.json
+automatic_shacl_report.json
 source files
 tests
 build/test outputs
 ```
 
-## 13. Direct model call
+Generated package status changes to `production_candidate_validated` only after required validation commands pass and required human checkpoints pass or are explicitly waived.
+
+---
+
+## 13. Math-to-code workflow
+
+Use a raw formula:
+
+```bash
+docker compose run --rm cli math-to-code \
+  --formula-latex 'L(\\theta)=\\mathbb{E}_{q_\\theta(z)}[\\log p(x,z)-\\log q_\\theta(z)]' \
+  --language rust
+```
+
+Use an extracted formula ID:
+
+```bash
+docker compose run --rm cli math-to-code \
+  --formula-id urn:veritas:formula:paper:page_4:eq_2 \
+  --language rust
+```
+
+The math workflow treats formulas as **SymbolicShadow** artifacts, not truth by themselves. It asks for surface phenomenon, representation map, latent ontology, transformation space, invariants, compression fidelity, recursion, generative necessity, transfer/proof status, and validation requirements before code generation.
+
+---
+
+## 14. Human checkpoint workflow
+
+Review a single checkpoint:
+
+```bash
+docker compose run --rm cli review-checkpoint \
+  --phase plan_review \
+  --decision approve \
+  --reviewer "human@example.com" \
+  --artifact-id run-123-plan
+```
+
+Run the source/mocked human workflow proof:
+
+```bash
+scripts/e2e/source-mocked-human-workflow.sh
+```
+
+Supported phases:
+
+```text
+citation_review
+formula_review
+representation_review
+plan_review
+code_architecture_review
+validation_review
+```
+
+---
+
+## 15. Direct model call
 
 ```bash
 docker compose run --rm cli chat \
@@ -249,18 +425,36 @@ code
 math
 ```
 
-## 14. Useful logs
+---
+
+## 16. Logs and troubleshooting
 
 ```bash
 docker compose logs -f api
 docker compose logs -f embedding
 docker compose logs -f ingestion
+docker compose logs -f shacl
 docker compose logs -f vllm-planner
 docker compose logs -f opensearch
 docker compose logs -f fuseki
 ```
 
-## 15. Stop
+Host validation summary:
+
+```bash
+cat data/e2e/host-validation-summary.json | jq
+```
+
+Feature scorecard:
+
+```bash
+cat data/scorecard/feature-scorecard.json | jq
+cat FEATURE_SCORECARD.md
+```
+
+---
+
+## 17. Stop services
 
 ```bash
 docker compose down

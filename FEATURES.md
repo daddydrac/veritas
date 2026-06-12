@@ -2,7 +2,7 @@
 
 **Veritas** is a Docker-first, Rust-orchestrated, ontology-guided research-to-code system for math-heavy evidence-backed software engineering. It ingests research papers, extracts formulas and citations, builds OpenSearch and Fuseki knowledge layers, grounds agent planning in ontology facts and SHACL rules, routes model calls through vLLM-compatible providers, writes code into auditable run workspaces, validates generated packages, and produces traceable final reports.
 
-This file catalogs the features implemented across Passes 1-5 of the production hardening plan.
+This file catalogs the features implemented across Phases 0-8 of the production hardening plan.
 
 > Production note: the source-level feature set and host-executable proof harness are present. Full production certification still requires a real host run with Cargo, Docker Compose, OpenSearch, Fuseki, SHACL, fake-vLLM E2E, and, when required, live vLLM/GPU model validation.
 
@@ -34,6 +34,7 @@ This file catalogs the features implemented across Passes 1-5 of the production 
 22. [Fake-vLLM and production proof harness](#fake-vllm-and-production-proof-harness)
 23. [CI, validation, and audit](#ci-validation-and-audit)
 24. [Known certification boundary](#known-certification-boundary)
+25. [Phase 8 scorecard automation](#phase-8-scorecard-automation)
 
 ---
 
@@ -240,6 +241,21 @@ sequenceDiagram
 | CI workflows | `.github/workflows/*.yml` | Adds Python, Rust, and Docker fake-E2E workflows. |
 
 ---
+
+## Phase 8 scorecard automation
+
+Phase 8 adds self-reporting documentation and metric automation. Veritas now generates a source/mocked feature scorecard that separates source/mocked readiness from live host acceptance. The generated scorecard lives at `FEATURE_SCORECARD.md`, with machine-readable data in `data/scorecard/feature-scorecard.json`.
+
+Phase 8 keeps the agreed live-host boundary explicit: Cargo/Rust validation, Docker E2E execution, and live vLLM/GPU validation remain `host_validation_pending` until run on a proper host. They are not counted as failed source/mocked checks.
+
+Phase 8 commands:
+
+```bash
+scripts/e2e/source-mocked-scorecard.sh
+python3 scripts/generate-feature-scorecard.py --run-validate-spec --update-docs
+```
+
+The generated scorecard grades the non-skipped feature groups: provider abstraction, remote fallback, structured outputs, planner/codegen/math schemas, run state, sandbox/path safety, OpenSearch/Fuseki contracts, SPARQL fact summaries, SHACL governance, formula OCR/review contracts, human workflow UX, and documentation consistency.
 
 ## Rust API features
 
@@ -956,3 +972,14 @@ Policy gates support `auto_approve`, `require_all`, and
 `require_high_risk_only`.  A rejected formula blocks code generation.  Missing
 required plan/code/validation approvals block production-candidate status unless
 explicitly waived with a reason.
+
+<!-- PHASE8_SCORECARD:START -->
+## Phase 8 — Documentation and Metric Automation
+
+- Source/mocked average score: **94.06%**.
+- All non-skipped source/mocked features are A/B: **True**.
+- Live host dimensions are explicitly marked `host_validation_pending`: Rust/Cargo, Docker E2E, and live vLLM/GPU validation.
+- Generated artifacts: `data/scorecard/feature-scorecard.json` and `FEATURE_SCORECARD.md`.
+
+See `FEATURE_SCORECARD.md` for the generated feature table.
+<!-- PHASE8_SCORECARD:END -->

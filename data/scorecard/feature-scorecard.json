@@ -1,0 +1,235 @@
+{
+  "generated_at": "2026-06-12T00:38:57.797238+00:00",
+  "acceptance_scope": "source_mocked",
+  "live_host_dimensions": [
+    "rust_validation",
+    "docker_e2e_validation",
+    "live_vllm_validation"
+  ],
+  "live_host_dimensions_status": "host_validation_pending",
+  "validation_summary": {
+    "total": 98,
+    "failed": 0,
+    "unavailable": 2
+  },
+  "validation_ok": true,
+  "source_mocked_average_score": 94.06,
+  "source_mocked_all_a_or_b": true,
+  "features": [
+    {
+      "id": "architecture_alignment",
+      "name": "Architecture alignment",
+      "grade": "A",
+      "score": 96,
+      "evidence": [
+        "README.md",
+        "FEATURES.md",
+        "docker-compose.yml"
+      ],
+      "notes": "Architecture matches ontology + retrieval + vLLM + validation-loop target."
+    },
+    {
+      "id": "source_feature_coverage",
+      "name": "Source-level feature coverage",
+      "grade": "A-",
+      "score": 95,
+      "evidence": [
+        "apps/api/src/main.rs",
+        "services/ingestion/veritas_ingest",
+        "packages/ontology"
+      ],
+      "notes": "Passes 0-7 source features are implemented and validated through source/mocked harnesses."
+    },
+    {
+      "id": "python_test_coverage",
+      "name": "Python/source-mocked test coverage",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "tests/ingestion",
+        "scripts/e2e/source-mocked-*.sh"
+      ],
+      "notes": "Python tests and source/mocked E2E scripts are part of source/mocked acceptance."
+    },
+    {
+      "id": "provider_abstraction",
+      "name": "Provider abstraction",
+      "grade": "A-",
+      "score": 92,
+      "evidence": [
+        "apps/api/src/providers.rs",
+        "apps/api/src/schemas.rs"
+      ],
+      "notes": "Provider trait, local vLLM, remote fallback, circuit breaker, retry/backoff, and route history are source-level implemented."
+    },
+    {
+      "id": "remote_fallback",
+      "name": "Remote fallback",
+      "grade": "A-",
+      "score": 92,
+      "evidence": [
+        "apps/api/src/providers.rs",
+        "README.md"
+      ],
+      "notes": "Remote fallback is explicit, role-aware, audited, and not silent."
+    },
+    {
+      "id": "structured_outputs",
+      "name": "Structured outputs",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "schemas/*.schema.json",
+        "apps/api/src/schemas.rs",
+        "docs/STRUCTURED_OUTPUTS.md"
+      ],
+      "notes": "Role-specific schema contracts govern planner, codegen, math, repair, human checkpoint, and run report output."
+    },
+    {
+      "id": "planner_codegen_math_schemas",
+      "name": "Planner/codegen/math schemas",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "schemas/planner.schema.json",
+        "schemas/codegen.schema.json",
+        "schemas/math_reasoning.schema.json"
+      ],
+      "notes": "Schema validation and fake structured-output tests cover accepted and rejected model outputs."
+    },
+    {
+      "id": "run_state_locking_resume",
+      "name": "Run state / locking / resume",
+      "grade": "A-",
+      "score": 93,
+      "evidence": [
+        "apps/api/src/main.rs",
+        "scripts/e2e/source-mocked-execution-safety.sh"
+      ],
+      "notes": "Run state, lock metadata, cancellation, status, command audit, and source/mocked resume semantics are implemented."
+    },
+    {
+      "id": "sandbox_path_safety",
+      "name": "Sandbox and path safety",
+      "grade": "A-",
+      "score": 93,
+      "evidence": [
+        "apps/api/src/main.rs",
+        "docker/sandbox/rust.Dockerfile"
+      ],
+      "notes": "Production profiles default toward sandbox behavior and path safety rejects traversal/symlink escape patterns."
+    },
+    {
+      "id": "opensearch_mapping_migration",
+      "name": "OpenSearch mapping/migration source proof",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "schemas/opensearch/evidence_document.schema.json",
+        "services/ingestion/veritas_ingest/retrieval_ontology_contracts.py"
+      ],
+      "notes": "Mapping, FAISS/HNSW fields, aliases, dimension mismatch, and fallback query behavior are source/mocked tested."
+    },
+    {
+      "id": "fuseki_named_graphs",
+      "name": "Fuseki named graph source proof",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "packages/ontology/queries",
+        "services/ingestion/veritas_ingest/retrieval_ontology_contracts.py"
+      ],
+      "notes": "Ontology/document/run/validation graph discipline and graph-store upload contracts are source/mocked tested."
+    },
+    {
+      "id": "sparql_fact_summary",
+      "name": "SPARQL fact summary",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "packages/ontology/queries",
+        "apps/api/src/main.rs"
+      ],
+      "notes": "Planner grounding summarizes the full SPARQL query pack into typed facts."
+    },
+    {
+      "id": "shacl_core_math_gate",
+      "name": "SHACL core/math/gate",
+      "grade": "A",
+      "score": 95,
+      "evidence": [
+        "packages/ontology/shacl/veritas-core.shacl.ttl",
+        "packages/ontology/shacl/veritas-math.shacl.ttl"
+      ],
+      "notes": "Core and math SHACL rules and source/mocked governance proof are implemented."
+    },
+    {
+      "id": "formula_image_ocr_contract",
+      "name": "Formula image/OCR contract",
+      "grade": "B+",
+      "score": 90,
+      "evidence": [
+        "services/ingestion/veritas_ingest/formula_images.py",
+        "services/ingestion/veritas_ingest/latex_ocr.py"
+      ],
+      "notes": "Command and HTTP OCR providers are contract-tested with fallback states; live OCR quality remains corpus-dependent."
+    },
+    {
+      "id": "human_review_ux",
+      "name": "Human review UX",
+      "grade": "A-",
+      "score": 93,
+      "evidence": [
+        "services/ingestion/veritas_ingest/human_workflow.py",
+        "schemas/human_checkpoint.schema.json"
+      ],
+      "notes": "Citation, formula, representation, plan, code architecture, and validation checkpoints are source/mocked implemented."
+    },
+    {
+      "id": "documentation_scorecard",
+      "name": "Documentation and scorecard automation",
+      "grade": "A",
+      "score": 96,
+      "evidence": [
+        "FEATURES.md",
+        "QUICKSTART.md",
+        "VALIDATION_MATRIX.md",
+        "AUDIT.md",
+        "scripts/generate-feature-scorecard.py"
+      ],
+      "notes": "Scorecard generation separates source/mocked acceptance from live host acceptance."
+    },
+    {
+      "id": "rust_validation",
+      "name": "Rust validation",
+      "grade": "host_validation_pending",
+      "score": null,
+      "evidence": [
+        ".github/workflows/rust.yml"
+      ],
+      "notes": "Skipped in this scoped pass; run cargo fmt/check/test/clippy on a Rust host."
+    },
+    {
+      "id": "docker_e2e_validation",
+      "name": "Docker E2E validation",
+      "grade": "host_validation_pending",
+      "score": null,
+      "evidence": [
+        "docker-compose.e2e.yml",
+        "scripts/e2e/full-fake-vllm-e2e.sh"
+      ],
+      "notes": "Skipped in this scoped pass; run Docker fake-vLLM E2E on a Docker host."
+    },
+    {
+      "id": "live_vllm_validation",
+      "name": "Live vLLM validation",
+      "grade": "host_validation_pending",
+      "score": null,
+      "evidence": [
+        "scripts/e2e/live-vllm-smoke.sh"
+      ],
+      "notes": "Skipped in this scoped pass; run live vLLM smoke on target GPU/model host."
+    }
+  ],
+  "status": "source_mocked_ready"
+}

@@ -4,7 +4,6 @@
 
   - [Download research paper here](https://github.com/daddydrac/veritas/blob/main/veritas_paper.pdf)
   - [See FEATURES for diagrams, data flow, and features of the software/architecture](https://github.com/daddydrac/veritas/blob/main/FEATURES.md)
-  - Reasoning brought to you by the following ontologies: BFO, SKOS and SHACL rules!
 
 ![](./assets/veritas.png)
 

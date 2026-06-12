@@ -221,3 +221,14 @@ Validation run expected in this environment:
 scripts/e2e/source-mocked-human-workflow.sh
 PYTHONPATH=services/ingestion pytest -q tests/ingestion/test_phase7_human_workflow.py
 ```
+
+<!-- PHASE8_SCORECARD:START -->
+## Phase 8 — Documentation and Metric Automation
+
+- Source/mocked average score: **94.06%**.
+- All non-skipped source/mocked features are A/B: **True**.
+- Live host dimensions are explicitly marked `host_validation_pending`: Rust/Cargo, Docker E2E, and live vLLM/GPU validation.
+- Generated artifacts: `data/scorecard/feature-scorecard.json` and `FEATURE_SCORECARD.md`.
+
+See `FEATURE_SCORECARD.md` for the generated feature table.
+<!-- PHASE8_SCORECARD:END -->
