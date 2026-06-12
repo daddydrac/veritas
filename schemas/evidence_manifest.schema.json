@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasEvidenceManifest",
+  "type": "object",
+  "required": ["kind", "source_document_id", "chunks_path", "formulas_path", "citations_path", "review_queue_path", "planning_status", "planning_blocked"],
+  "properties": {
+    "kind": {"const": "VeritasEvidenceManifest"},
+    "backend": {"type": "string"},
+    "source_document_id": {"type": "string"},
+    "chunks_path": {"type": "string"},
+    "formulas_path": {"type": "string"},
+    "citations_path": {"type": "string"},
+    "review_queue_path": {"type": "string"},
+    "evidence_registry_path": {"type": "string"},
+    "planning_status": {"type": "string"},
+    "planning_blocked": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

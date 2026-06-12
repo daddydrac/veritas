@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasFormulaRecord",
+  "type": "object",
+  "required": ["formula_id", "source_document_id", "chunk_id", "citation_id", "codegen_eligibility_status"],
+  "properties": {
+    "formula_id": {"type": "string"},
+    "source_document_id": {"type": "string"},
+    "chunk_id": {"type": "string"},
+    "citation_id": {"type": "string"},
+    "raw_latex": {"type": "string"},
+    "latex": {"type": "string"},
+    "normalized_latex": {"type": "string"},
+    "ocr_status": {"type": "string"},
+    "latex_ocr_status": {"type": "string"},
+    "ocr_confidence": {"type": "number"},
+    "latex_ocr_confidence": {"type": "number"},
+    "formula_image_status": {"type": "string"},
+    "human_validation_status": {"type": "string"},
+    "review_decision": {"type": "string"},
+    "codegen_eligibility_status": {"type": "string", "enum": ["eligible", "rejected", "pending_review", "waived_for_exploration", "not_eligible_low_confidence", "not_eligible_missing_citation", "eligible_human_validated", "blocked_rejected_by_human", "blocked_pending_human_review"]},
+    "eligible_for_codegen": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

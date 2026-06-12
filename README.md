@@ -866,3 +866,80 @@ Use the ingestion CLI directly:
 python -m veritas_ingest.cli review-workflow --policy require_all --decision approve
 python -m veritas_ingest.cli review-checkpoint --phase plan_review --decision approve --artifact-json '{"risks":["high"]}'
 ```
+
+
+## Phase 1 Real Journey Orchestrator
+
+Veritas now exposes a canonical end-user journey path:
+
+```bash
+veritas journey run --source paper.pdf --mode local --goal "Implement the method" --language rust
+veritas journey status <run_id>
+veritas journey review <run_id> --phase plan_review --decision approve
+veritas journey resume <run_id>
+veritas journey report <run_id>
+```
+
+This is the real application path, not a source-mocked proof script. Phase 1 created the real run workspace and lifecycle surface; Phase 2 now attaches the real local ingestion backend so a local PDF produces evidence, formula, citation, review, RDF, lexical-index, and vector-index artifacts before planning/codegen is allowed.
+
+
+## Phase 2 Real Local Ingestion Backend
+
+Veritas now supports real local PDF ingestion for the Journey path without requiring OpenSearch, Fuseki, Docker service DNS, or source-mocked proof scripts. The local backend parses the actual PDF, extracts chunks/formulas/citation metadata, writes RDF/Turtle evidence, writes a local lexical index, and writes a local vector index when a real embedding provider is available. It never fabricates embeddings: when no real local SentenceTransformer or HTTP embedding service is configured, `evidence_manifest.json` records `planning_status=blocked_retrieval_unavailable`.
+
+Run it directly:
+
+```bash
+PYTHONPATH=services/ingestion \
+python3 -m veritas_ingest.cli --config config/veritas.yaml ingest-pdf \
+  --path tests/fixtures/sample_math_paper.pdf \
+  --backend local \
+  --workspace data/runs/local-ingestion-demo
+```
+
+The real Journey orchestrator invokes the same backend for local source documents before planning/codegen.
+
+## Phase 3: Evidence Eligibility Registry
+
+The real product path now writes an authoritative Evidence Eligibility Registry during local ingestion. The registry is not a mock and not a scorecard. It is the application-level decision artifact that determines whether citations may support production-bound planning and whether formulas may support formula-to-code.
+
+Key files written into a journey/local-ingestion workspace:
+
+```text
+evidence_registry.json
+evidence_eligibility.json
+evidence_manifest.json
+formula_manifest.json
+citation_manifest.json
+review_queue.json
+```
+
+After reviewing citations or formulas, rebuild the registry from the updated chunks file:
+
+```bash
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli review-citations \
+  --chunks data/runs/<run_id>/chunks.jsonl \
+  --decision approve
+
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli review-formulas \
+  --chunks data/runs/<run_id>/chunks.jsonl \
+  --decision approve
+
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli evidence-registry \
+  --workspace data/runs/<run_id> \
+  --refresh-from-chunks
+```
+
+Production-bound `/math-to-code` no longer accepts request-level formula approval as authority. A formula must resolve through `evidence_registry.json`, must have `codegen_eligibility_status=eligible`, and its citation must be usable for audit. Rejected, pending, low-confidence, missing-citation, or exploration-only formulas block before math/code model calls.
+
+## Phase 4: Pre-Execution Gate Engine
+
+The real Journey and `/run` application path now contains a **Pre-Execution Gate Engine**. Before Veritas can call the code model, write generated files, or run validation commands, it evaluates the workspace's evidence eligibility, representation readiness, math-tool readiness, pre-codegen human checkpoints, and SHACL report.
+
+The default pre-codegen human checkpoints are configurable through:
+
+```bash
+VERITAS_PRE_CODEGEN_CHECKPOINTS=plan_review,code_architecture_review
+```
+
+If a required gate is missing or rejected, Veritas writes `gate_decisions.jsonl`, `pre_codegen_gate_report.json`, `pre_codegen_blocked_report.json`, and `final_report.json`, then stops with `files_changed=[]` and `commands_run=[]`. This prevents approvals from being cosmetic and makes them causal controls over downstream execution.

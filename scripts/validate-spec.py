@@ -49,6 +49,7 @@ REQUIRED_FILES = [
     "packages/ontology/shacl/veritas-math.shacl.ttl",
     "services/shacl/Dockerfile",
     "apps/api/src/main.rs",
+    "apps/api/src/journey.rs",
     "apps/api/src/providers.rs",
     "apps/api/src/schemas.rs",
     "apps/cli/src/main.rs",
@@ -105,6 +106,7 @@ REQUIRED_FILES = [
     "scripts/e2e/source-mocked-formula-ocr-review.py",
     "scripts/e2e/source-mocked-formula-ocr-review.sh",
     "docs/tutorials/PHASE6_FORMULA_OCR_REVIEW.md",
+    "docs/tutorials/PHASE1_REAL_JOURNEY_ORCHESTRATOR.md",
     "scripts/e2e/wrap-final-report.py",
     "scripts/e2e/record-step.py",
     "scripts/e2e/gpu-validation.sh",
@@ -890,6 +892,179 @@ def check_phase8_scorecard_automation() -> dict:
             executable.append(rel)
     return {"name": "phase8.scorecard_automation", "ok": not missing and not read_errors and not executable, "details": {"missing": missing, "read_errors": read_errors, "not_executable": executable}}
 
+
+def check_real_journey_orchestrator() -> dict:
+    blobs = {}
+    read_errors = []
+    for key, rel in {
+        "api_main": "apps/api/src/main.rs",
+        "journey": "apps/api/src/journey.rs",
+        "cli": "apps/cli/src/main.rs",
+        "quickstart": "QUICKSTART.md",
+        "features": "FEATURES.md",
+    }.items():
+        text, error = safe_read_text(rel, required=True)
+        blobs[key] = text
+        if error:
+            read_errors.append(error)
+    required = [
+        ("api_main", "mod journey;"),
+        ("api_main", "/journey/run"),
+        ("api_main", "/journey/:run_id/status"),
+        ("api_main", "/journey/:run_id/review"),
+        ("api_main", "/journey/:run_id/resume"),
+        ("api_main", "/journey/:run_id/report"),
+        ("journey", "JourneyRunRequest"),
+        ("journey", "VeritasJourneyRunReport"),
+        ("journey", "source_manifest.json"),
+        ("journey", "journey_lifecycle.jsonl"),
+        ("journey", "execute_autonomous_run_core"),
+        ("journey", "real_product_path"),
+        ("cli", "JourneyCommands"),
+        ("cli", "api.journey.run"),
+        ("cli", "/journey/run"),
+        ("quickstart", "veritas journey run"),
+        ("features", "Real Journey Orchestrator"),
+    ]
+    result = check_contains_all("real_journey_orchestrator", blobs, required, read_errors)
+    return result
+
+
+def check_phase2_real_local_ingestion_backend() -> dict:
+    blobs: dict[str, str] = {}
+    read_errors: list[str] = []
+    for key, rel in {
+        "cli": "services/ingestion/veritas_ingest/cli.py",
+        "local_backend": "services/ingestion/veritas_ingest/local_backend.py",
+        "local_embedding": "services/ingestion/veritas_ingest/local_embedding_provider.py",
+        "local_evidence": "services/ingestion/veritas_ingest/local_evidence_store.py",
+        "local_vector": "services/ingestion/veritas_ingest/local_vector_store.py",
+        "local_rdf": "services/ingestion/veritas_ingest/local_rdf_store.py",
+        "journey": "apps/api/src/journey.rs",
+        "dockerfile_api": "Dockerfile.api",
+        "quickstart": "QUICKSTART.md",
+        "features": "FEATURES.md",
+    }.items():
+        text, error = safe_read_text(rel, required=True)
+        blobs[key] = text
+        if error:
+            read_errors.append(error)
+    required = [
+        ("cli", "--backend"),
+        ("cli", "--workspace"),
+        ("cli", "write_local_outputs"),
+        ("local_backend", "def write_local_outputs"),
+        ("local_backend", "evidence_manifest.json"),
+        ("local_backend", "formula_manifest.json"),
+        ("local_backend", "citation_manifest.json"),
+        ("local_backend", "review_queue.json"),
+        ("local_embedding", "No fake/hash embeddings"),
+        ("local_embedding", "planning_blocked"),
+        ("local_vector", "write_local_vector_index"),
+        ("local_vector", "write_local_lexical_index"),
+        ("local_rdf", "write_local_rdf"),
+        ("journey", "run_local_ingestion"),
+        ("journey", "blocked_by_retrieval_unavailable"),
+        ("journey", "promote_local_ingestion_artifacts"),
+        ("dockerfile_api", "services/ingestion/requirements.txt"),
+        ("dockerfile_api", "VERITAS_INGEST_PYTHON"),
+        ("quickstart", "--backend local"),
+        ("features", "Real Local Ingestion Backend"),
+    ]
+    return check_contains_all("phase2.real_local_ingestion_backend", blobs, required, read_errors)
+
+
+def check_phase3_evidence_eligibility_registry() -> dict:
+    blobs: dict[str, str] = {}
+    read_errors: list[str] = []
+    for key, rel in {
+        "api_main": "apps/api/src/main.rs",
+        "api_registry": "apps/api/src/evidence_registry.rs",
+        "py_registry": "services/ingestion/veritas_ingest/evidence_registry.py",
+        "local_backend": "services/ingestion/veritas_ingest/local_backend.py",
+        "cli": "services/ingestion/veritas_ingest/cli.py",
+        "journey": "apps/api/src/journey.rs",
+        "schema_evidence": "schemas/evidence_manifest.schema.json",
+        "schema_formula": "schemas/formula_record.schema.json",
+        "schema_citation": "schemas/citation_record.schema.json",
+        "schema_eligibility": "schemas/evidence_eligibility.schema.json",
+        "quickstart": "QUICKSTART.md",
+        "features": "FEATURES.md",
+    }.items():
+        text, error = safe_read_text(rel, required=True)
+        blobs[key] = text
+        if error:
+            read_errors.append(error)
+    required = [
+        ("api_main", "mod evidence_registry;"),
+        ("api_main", "/evidence-registry/status"),
+        ("api_main", "require_math_to_code_eligibility"),
+        ("api_registry", "VeritasEvidenceEligibilityRegistry"),
+        ("api_registry", "blocked_by_formula_review"),
+        ("api_registry", "blocked_by_citation_review"),
+        ("api_registry", "No request-level approval"),
+        ("py_registry", "def normalize_formula_record"),
+        ("py_registry", "def normalize_citation_record"),
+        ("py_registry", "def refresh_workspace_registry"),
+        ("py_registry", "def formula_gate"),
+        ("py_registry", "def planning_gate"),
+        ("local_backend", "evidence_registry.json"),
+        ("local_backend", "evidence_eligibility.json"),
+        ("cli", "evidence-registry"),
+        ("journey", "EvidenceEligibility"),
+        ("schema_formula", "codegen_eligibility_status"),
+        ("schema_citation", "citation_usable_for_audit"),
+        ("schema_eligibility", "VeritasEvidenceEligibilityRegistry"),
+        ("quickstart", "Evidence Eligibility Registry"),
+        ("features", "Evidence Eligibility Registry"),
+    ]
+    return check_contains_all("phase3.evidence_eligibility_registry", blobs, required, read_errors)
+
+
+def check_phase4_pre_execution_gate_engine() -> dict:
+    blobs: dict[str, str] = {}
+    read_errors: list[str] = []
+    for key, rel in {
+        "api_main": "apps/api/src/main.rs",
+        "gates_mod": "apps/api/src/gates/mod.rs",
+        "gate_evidence": "apps/api/src/gates/evidence.rs",
+        "gate_human": "apps/api/src/gates/human.rs",
+        "gate_shacl": "apps/api/src/gates/shacl.rs",
+        "gate_representation": "apps/api/src/gates/representation.rs",
+        "gate_math_tools": "apps/api/src/gates/math_tools.rs",
+        "journey": "apps/api/src/journey.rs",
+        "quickstart": "QUICKSTART.md",
+        "features": "FEATURES.md",
+        "audit": "AUDIT.md",
+    }.items():
+        text, error = safe_read_text(rel, required=True)
+        blobs[key] = text
+        if error:
+            read_errors.append(error)
+    required = [
+        ("api_main", "mod gates;"),
+        ("api_main", "run_pre_codegen_gates"),
+        ("api_main", "write_pre_codegen_blocked_report"),
+        ("api_main", "PreCodegenGatesPassed"),
+        ("gates_mod", "PreCodegenBlocked"),
+        ("api_main", "pre_codegen_gates"),
+        ("gates_mod", "VeritasPreCodegenGateReport"),
+        ("gates_mod", "gate_decisions.jsonl"),
+        ("gates_mod", "files_written_allowed"),
+        ("gates_mod", "commands_run_allowed"),
+        ("gate_evidence", "planning_gate_from_workspace"),
+        ("gate_human", "VERITAS_PRE_CODEGEN_CHECKPOINTS"),
+        ("gate_human", "Required pre-codegen human checkpoint is missing"),
+        ("gate_shacl", "blocked_by_governance"),
+        ("gate_representation", "representation_model.json"),
+        ("gate_math_tools", "math_validation_report.json"),
+        ("journey", "phase4_pre_execution_gate_engine"),
+        ("quickstart", "Pre-Execution Gate Engine"),
+        ("features", "Pre-Execution Gate Engine"),
+        ("audit", "Phase 4"),
+    ]
+    return check_contains_all("phase4.pre_execution_gate_engine", blobs, required, read_errors)
+
 def main() -> int:
     checks = [check_file_exists(rel) for rel in REQUIRED_FILES]
     checks.extend([
@@ -915,6 +1090,10 @@ def main() -> int:
         check_phase6_formula_ocr_review(),
         check_phase7_human_workflow(),
         check_phase8_scorecard_automation(),
+        check_real_journey_orchestrator(),
+        check_phase2_real_local_ingestion_backend(),
+        check_phase3_evidence_eligibility_registry(),
+        check_phase4_pre_execution_gate_engine(),
         check_optional_command("cargo.check", ["cargo", "check", "--workspace"]),
         check_optional_command("docker.compose.config", ["docker", "compose", "config"]),
     ])

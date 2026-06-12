@@ -465,3 +465,92 @@ Remove data volumes:
 ```bash
 docker compose down -v
 ```
+
+
+## Real Journey Orchestrator Quickstart
+
+The canonical end-user path starts with the journey command:
+
+```bash
+veritas journey run --source tests/fixtures/sample_math_paper.pdf --mode local --goal "Turn this paper into validated software" --language rust
+```
+
+Inspect progress and reports with:
+
+```bash
+veritas journey status <run_id>
+veritas journey report <run_id>
+```
+
+Record human checkpoint decisions with:
+
+```bash
+veritas journey review <run_id> --phase plan_review --decision approve --notes "Plan approved for implementation."
+```
+
+Phase 1 registers source documents and delegates to the existing real autonomous run core. Phase 2 adds real local ingestion so a PDF produces evidence manifests, citation manifests, formula manifests, and review queues before planning.
+
+## Phase 2 Real Local Ingestion Backend
+
+For a real local paper-to-evidence run without OpenSearch, Fuseki, Docker service DNS, or mocked proof scripts, run:
+
+```bash
+PYTHONPATH=services/ingestion \
+python3 -m veritas_ingest.cli --config config/veritas.yaml ingest-pdf \
+  --path tests/fixtures/sample_math_paper.pdf \
+  --backend local \
+  --workspace data/runs/local-ingestion-demo
+```
+
+This writes real local ingestion artifacts:
+
+```text
+evidence_manifest.json
+formula_manifest.json
+citation_manifest.json
+review_queue.json
+chunks.jsonl
+formulas.jsonl
+citations.jsonl
+evidence.ttl
+local_lexical_index.jsonl
+local_vector_index.jsonl
+ingestion_report.md
+```
+
+If no real local embedding provider is configured, ingestion still succeeds and the evidence manifest sets `planning_status=blocked_retrieval_unavailable`. That is intentional: Veritas does not fabricate embeddings or pretend a production-bound retrieval path is ready.
+
+To enable real local embeddings, install sentence-transformers and configure the local provider, or start the embedding service and use the HTTP provider:
+
+```bash
+export VERITAS_LOCAL_EMBEDDING_PROVIDER=sentence-transformers
+# or
+export VERITAS_LOCAL_EMBEDDING_PROVIDER=http
+export VERITAS_EMBEDDING_URL=http://localhost:8090
+```
+
+## Evidence Eligibility Registry check
+
+After local ingestion, inspect the real evidence gate before planning or formula-to-code:
+
+```bash
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli evidence-registry \
+  --workspace data/runs/<run_id>/ingestion \
+  --refresh-from-chunks
+```
+
+A production-bound journey requires approved citations and eligible formulas. If the registry reports `awaiting_evidence_review`, review citations/formulas first. Raw `human_approved=true` style overrides are not accepted as production authority.
+
+## Pre-Execution Gate Engine
+
+After ingestion and evidence review, Veritas must pass the Pre-Execution Gate Engine before code generation begins.
+
+For governed runs, approve the required checkpoints before resuming:
+
+```bash
+veritas journey review <run_id> --phase plan_review --decision approve --notes "Plan reviewed."
+veritas journey review <run_id> --phase code_architecture_review --decision approve --notes "Architecture approved."
+veritas journey resume <run_id>
+```
+
+If approval is missing, Veritas stops before code generation and writes `pre_codegen_gate_report.json`. No generated files are written and no validation commands are run until the missing gate is resolved.

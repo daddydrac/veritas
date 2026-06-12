@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasCitationRecord",
+  "type": "object",
+  "required": ["citation_id", "source_document_id", "apa_citation", "citation_review_status", "citation_usable_for_audit"],
+  "properties": {
+    "citation_id": {"type": "string"},
+    "source_document_id": {"type": "string"},
+    "apa_citation": {"type": "string"},
+    "citation_review_status": {"type": "string"},
+    "citation_human_validated": {"type": "boolean"},
+    "citation_usable_for_audit": {"type": "boolean"},
+    "review_decision": {"type": "string"}
+  },
+  "additionalProperties": true
+}
