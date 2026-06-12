@@ -841,6 +841,55 @@ def check_optional_command(name: str, args: list[str]) -> dict:
         return {"name": name, "ok": False, "details": str(exc)}
 
 
+
+def check_phase8_scorecard_automation() -> dict:
+    files = {
+        "scorecard_script": "scripts/generate-feature-scorecard.py",
+        "scorecard_sh": "scripts/e2e/source-mocked-scorecard.sh",
+        "test": "tests/ingestion/test_phase8_scorecard.py",
+        "tutorial": "docs/tutorials/PHASE8_SCORECARD_AUTOMATION.md",
+        "quickstart": "QUICKSTART.md",
+        "features": "FEATURES.md",
+        "validate_host": "scripts/validate-host.sh",
+        "python_workflow": ".github/workflows/python.yml",
+        "matrix": "VALIDATION_MATRIX.md",
+        "audit": "AUDIT.md",
+    }
+    blobs: dict[str, str] = {}
+    read_errors: list[str] = []
+    for key, rel in files.items():
+        value, error = safe_read_text(rel)
+        blobs[key] = value
+        if error:
+            read_errors.append(error)
+    required = [
+        ("scorecard_script", "FEATURES"),
+        ("scorecard_script", "source_mocked_average_score"),
+        ("scorecard_script", "host_validation_pending"),
+        ("scorecard_script", "FEATURE_SCORECARD.md"),
+        ("scorecard_sh", "generate-feature-scorecard.py"),
+        ("scorecard_sh", "phase8_scorecard"),
+        ("test", "test_phase8_scorecard_generation"),
+        ("tutorial", "Phase 8"),
+        ("quickstart", "source-mocked"),
+        ("quickstart", "FEATURE_SCORECARD.md"),
+        ("quickstart", "production-acceptance.sh --profile source-mocked"),
+        ("quickstart", "single-gpu-prod"),
+        ("features", "Phase 8 scorecard automation"),
+        ("features", "FEATURE_SCORECARD.md"),
+        ("validate_host", "Source-mocked scorecard"),
+        ("python_workflow", "Run Source-mocked scorecard"),
+        ("matrix", "PHASE8_SCORECARD"),
+        ("audit", "PHASE8_SCORECARD"),
+    ]
+    missing = [f"{where}:{needle}" for where, needle in required if needle not in blobs.get(where, "")]
+    executable = []
+    for rel in ["scripts/generate-feature-scorecard.py", "scripts/e2e/source-mocked-scorecard.sh"]:
+        path = ROOT / rel
+        if path.exists() and not os.access(path, os.X_OK):
+            executable.append(rel)
+    return {"name": "phase8.scorecard_automation", "ok": not missing and not read_errors and not executable, "details": {"missing": missing, "read_errors": read_errors, "not_executable": executable}}
+
 def main() -> int:
     checks = [check_file_exists(rel) for rel in REQUIRED_FILES]
     checks.extend([
@@ -865,6 +914,7 @@ def main() -> int:
         check_phase5_shacl_math_governance(),
         check_phase6_formula_ocr_review(),
         check_phase7_human_workflow(),
+        check_phase8_scorecard_automation(),
         check_optional_command("cargo.check", ["cargo", "check", "--workspace"]),
         check_optional_command("docker.compose.config", ["docker", "compose", "config"]),
     ])
