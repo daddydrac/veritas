@@ -232,3 +232,53 @@ PYTHONPATH=services/ingestion pytest -q tests/ingestion/test_phase7_human_workfl
 
 See `FEATURE_SCORECARD.md` for the generated feature table.
 <!-- PHASE8_SCORECARD:END -->
+
+
+## Phase 1 Real Journey Orchestrator Audit
+
+Status: source-level implemented.
+
+The real journey orchestrator adds API endpoints and CLI commands for a single end-user workflow. It creates a real run workspace, records source and lifecycle artifacts, accepts human journey reviews, supports status/resume/report, and delegates to the existing autonomous run core rather than source-mocked scripts.
+
+Phase 2 now attaches real local ingestion artifacts before planning/codegen. Later phases must add evidence-registry gates, pre-codegen human gates, default-on SHACL enforcement, tool-verified math, artifact decision logic, and behavior-derived scorecards.
+
+
+## Phase 2 Real Local Ingestion Backend Audit
+
+Status: implemented at application/source level; live Rust/API execution remains host-validation pending.
+
+The local ingestion backend now parses real PDFs, writes `chunks.jsonl`, `formulas.jsonl`, `citations.jsonl`, `evidence.ttl`, `local_lexical_index.jsonl`, `local_vector_index.jsonl`, `evidence_manifest.json`, `formula_manifest.json`, `citation_manifest.json`, `review_queue.json`, and `ingestion_report.md`. The backend never fabricates embeddings. If no real embedding provider is available, `evidence_manifest.json` sets `planning_status=blocked_retrieval_unavailable`, and the Journey orchestrator blocks before delegating into planning/codegen.
+
+Validation evidence in this environment:
+
+```bash
+PYTHONPATH=services/ingestion pytest -q tests/ingestion/test_phase2_real_local_ingestion_backend.py
+python3 scripts/validate-spec.py
+```
+
+Remaining work: later phases must make formula/citation review decisions globally authoritative and enforce all human/governance gates before codegen.
+
+## Phase 3 audit note: Evidence Eligibility Registry
+
+Implemented the first causal evidence gate. Local ingestion now writes `evidence_registry.json` and `evidence_eligibility.json`. Citation and formula review commands refresh the registry from the updated chunks file. `/math-to-code` now blocks rejected, pending, low-confidence, or missing-citation formulas before model calls. Journey mode reads the registry and blocks planning with `awaiting_evidence_review` when citations/formulas are not eligible.
+
+Host-only validation remains pending for Rust compilation and live services, but the Python ingestion/registry path is executable in this environment.
+
+## Phase 4 Audit — Pre-Execution Gate Engine
+
+Phase 4 addresses the prior critical gap where human checkpoints were checked after code generation and validation. The real application path now invokes `gates::run_pre_codegen_gates` before `build_code_generation_prompt`, `write_generated_files`, and `run_command` execute.
+
+Resolved behavior:
+
+- Missing `plan_review` blocks before codegen.
+- Missing `code_architecture_review` blocks before codegen.
+- Rejected or ineligible evidence blocks before codegen.
+- Math-heavy runs require representation and math-tool readiness artifacts before codegen.
+- Enforced SHACL failures block before codegen.
+- Blocked runs write final reports with `files_changed=[]` and `commands_run=[]`.
+
+Remaining future work:
+
+- Phase 5 will add the real Tool-Verified Math Engine that produces `math_validation_report.json`.
+- Phase 6 will make SHACL governance mode default-on and artifact-bundle based.
+- Phase 7 will replace direct final-status mutation with the Artifact Decision Engine.

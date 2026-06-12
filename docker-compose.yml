@@ -139,6 +139,8 @@ services:
       - "${VERITAS_API_PORT:-8080}:8080"
     volumes:
       - ./data:/workspace/data
+      - ./config:/workspace/config:ro
+      - ./packages/ontology:/workspace/ontology:ro
     depends_on:
       opensearch:
         condition: service_healthy

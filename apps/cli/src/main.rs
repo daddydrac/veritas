@@ -41,6 +41,44 @@ struct Cli {
     command: Option<Commands>,
 }
 
+
+#[derive(Subcommand)]
+enum JourneyCommands {
+    /// Run the real Veritas journey orchestrator. This is the canonical end-user product path.
+    Run {
+        #[arg(long)]
+        source: Option<PathBuf>,
+        #[arg(long, default_value = "local")]
+        mode: String,
+        #[arg(long)]
+        goal: Option<String>,
+        #[arg(long, default_value = "rust")]
+        language: String,
+        #[arg(long, default_value = "require_high_risk_only")]
+        policy: String,
+        #[arg(long)]
+        max_retries: Option<usize>,
+    },
+    /// Show status for a real Veritas journey run.
+    Status { run_id: String },
+    /// Record a human review decision for a journey checkpoint.
+    Review {
+        run_id: String,
+        #[arg(long)]
+        phase: String,
+        #[arg(long)]
+        decision: String,
+        #[arg(long)]
+        notes: Option<String>,
+        #[arg(long, default_value = "human")]
+        reviewer: String,
+    },
+    /// Resume an interrupted journey run.
+    Resume { run_id: String },
+    /// Fetch the journey report bundle.
+    Report { run_id: String },
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Print the Veritas logo and guided workflow menu.
@@ -70,6 +108,11 @@ enum Commands {
     },
     /// Enter guided prompting mode after deployment.
     Prompt,
+    /// Real end-to-end Veritas journey workflow: source -> governed artifact.
+    Journey {
+        #[command(subcommand)]
+        command: JourneyCommands,
+    },
     /// Start the Docker Compose stack.
     Start {
         #[arg(long, default_value_t = false)]
@@ -125,6 +168,12 @@ enum Commands {
         #[arg(long)]
         formula_id: Option<String>,
         #[arg(long)]
+        formula_record_id: Option<String>,
+        #[arg(long)]
+        citation_record_id: Option<String>,
+        #[arg(long)]
+        evidence_manifest_path: Option<PathBuf>,
+        #[arg(long)]
         formula_latex: Option<String>,
         #[arg(long)]
         prompt: Option<String>,
@@ -132,6 +181,13 @@ enum Commands {
         language: String,
         #[arg(long)]
         max_retries: Option<usize>,
+        #[arg(long, default_value_t = false)]
+        allow_exploratory_unverified: bool,
+    },
+    /// Inspect a local Evidence Eligibility Registry from a journey/ingestion workspace.
+    EvidenceRegistryStatus {
+        #[arg(long)]
+        path: PathBuf,
     },
     /// Inspect a persisted run by id.
     RunStatus { run_id: String },
@@ -292,6 +348,40 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Prompt => prompt_shell(&http, &cli.api_url).await,
+        Commands::Journey { command } => match command {
+            JourneyCommands::Run { source, mode, goal, language, policy, max_retries } => {
+                let mut body = json!({"mode": mode, "language": language, "policy": policy});
+                if let Some(source_path) = source {
+                    body["source"] = json!(source_path.to_string_lossy().to_string());
+                }
+                if let Some(goal_value) = goal { body["goal"] = json!(goal_value); }
+                if let Some(retries) = max_retries { body["max_retries"] = json!(retries); }
+                print_response(
+                    http.post(format!("{}/journey/run", cli.api_url)).json(&body).send().await,
+                    "api.journey.run",
+                ).await
+            }
+            JourneyCommands::Status { run_id } => print_response(
+                http.get(format!("{}/journey/{}/status", cli.api_url, run_id)).send().await,
+                "api.journey.status",
+            ).await,
+            JourneyCommands::Review { run_id, phase, decision, notes, reviewer } => {
+                let mut body = json!({"phase": phase, "decision": decision, "reviewer": reviewer});
+                if let Some(value) = notes { body["notes"] = json!(value); }
+                print_response(
+                    http.post(format!("{}/journey/{}/review", cli.api_url, run_id)).json(&body).send().await,
+                    "api.journey.review",
+                ).await
+            }
+            JourneyCommands::Resume { run_id } => print_response(
+                http.post(format!("{}/journey/{}/resume", cli.api_url, run_id)).send().await,
+                "api.journey.resume",
+            ).await,
+            JourneyCommands::Report { run_id } => print_response(
+                http.get(format!("{}/journey/{}/report", cli.api_url, run_id)).send().await,
+                "api.journey.report",
+            ).await,
+        },
         Commands::Start {
             models,
             code_model,
@@ -406,8 +496,15 @@ async fn main() -> Result<()> {
             )
             .await
         },
-        Commands::MathToCode { formula_id, formula_latex, prompt, language, max_retries } => {
-            let mut body = json!({"formula_id": formula_id, "formula_latex": formula_latex, "prompt": prompt, "language": language});
+        Commands::EvidenceRegistryStatus { path } => print_response(
+            http.post(format!("{}/evidence-registry/status", cli.api_url))
+                .json(&json!({"path": path.to_string_lossy().to_string()}))
+                .send()
+                .await,
+            "api.evidence_registry.status",
+        ).await,
+        Commands::MathToCode { formula_id, formula_record_id, citation_record_id, evidence_manifest_path, formula_latex, prompt, language, max_retries, allow_exploratory_unverified } => {
+            let mut body = json!({"formula_id": formula_id, "formula_record_id": formula_record_id, "citation_record_id": citation_record_id, "evidence_manifest_path": evidence_manifest_path.as_ref().map(|path| path.to_string_lossy().to_string()), "formula_latex": formula_latex, "prompt": prompt, "language": language, "allow_exploratory_unverified": allow_exploratory_unverified});
             if let Some(retries) = max_retries { body["max_retries"] = json!(retries); }
             let first = http.post(format!("{}/math-to-code", cli.api_url)).json(&body).send().await;
             match first {
@@ -419,7 +516,6 @@ async fn main() -> Result<()> {
                         println!("{}", serde_json::to_string_pretty(&value["checkpoint"]).unwrap_or_else(|_| value["checkpoint"].to_string()));
                         let decision = prompt_default("Approve this representation-first math analysis? (approve/reject)", "approve")?;
                         if decision.trim().eq_ignore_ascii_case("approve") {
-                            body["human_approved"] = json!(true);
                             body["human_decision"] = json!({"decision": "approve", "reviewer": "cli-human"});
                             print_response(http.post(format!("{}/math-to-code", cli.api_url)).json(&body).send().await, "api.math_to_code.approved").await
                         } else {

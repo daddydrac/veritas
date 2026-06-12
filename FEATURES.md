@@ -983,3 +983,66 @@ explicitly waived with a reason.
 
 See `FEATURE_SCORECARD.md` for the generated feature table.
 <!-- PHASE8_SCORECARD:END -->
+
+
+## Real Journey Orchestrator
+
+Veritas now includes a real API/CLI journey orchestrator. It provides a single product entrypoint for the end-user workflow instead of requiring users to choose between source-mocked scripts, Python ingestion commands, and Rust API endpoints.
+
+Implemented commands and routes:
+
+```text
+POST /journey/run
+GET  /journey/:run_id/status
+POST /journey/:run_id/review
+POST /journey/:run_id/resume
+GET  /journey/:run_id/report
+
+veritas journey run
+veritas journey status
+veritas journey review
+veritas journey resume
+veritas journey report
+```
+
+The orchestrator persists `journey_request.json`, `source_manifest.json`, `journey_state.json`, `journey_lifecycle.jsonl`, and `journey_report.json`, then delegates to the real autonomous run core. Source-mocked scripts remain tests, not the product path.
+
+## Real Local Ingestion Backend
+
+Veritas now includes a real local ingestion backend for the Journey product path. It parses actual PDFs through the Docling-first/PyPDF fallback pipeline, extracts text, formulas, formula image/OCR metadata, APA-style citation metadata, and writes local evidence artifacts without requiring OpenSearch, Fuseki, Docker service DNS, or mocked proof scripts.
+
+The backend produces:
+
+```text
+evidence_manifest.json
+formula_manifest.json
+citation_manifest.json
+review_queue.json
+chunks.jsonl
+formulas.jsonl
+citations.jsonl
+evidence.ttl
+local_lexical_index.jsonl
+local_vector_index.jsonl
+ingestion_report.md
+```
+
+The backend deliberately never fabricates embeddings. If neither a real local SentenceTransformer model nor an explicitly configured HTTP embedding service is available, the evidence manifest records `planning_status=blocked_retrieval_unavailable` so Journey planning/codegen can block until retrieval is production-usable.
+
+### Evidence Eligibility Registry
+
+Veritas now builds `evidence_registry.json` and `evidence_eligibility.json` from real ingestion manifests and persisted human review decisions. This registry is the authoritative source of truth for whether a formula may be used for code generation and whether a citation may support production-bound planning. `/math-to-code` must resolve formula/citation eligibility through the registry before calling math or code models.
+
+## Pre-Execution Gate Engine
+
+Veritas now evaluates pre-codegen gates inside the real API execution path. The gate report is written before the code model is called and before generated files or validation commands can run.
+
+The gate engine evaluates:
+
+- Evidence Eligibility Registry status.
+- Required human checkpoints such as `plan_review` and `code_architecture_review`.
+- Representation readiness for math-heavy work.
+- Tool-verified math readiness when math-heavy artifacts are present.
+- SHACL conformance status.
+
+Blocked gates produce `gate_decisions.jsonl`, `pre_codegen_gate_report.json`, `pre_codegen_blocked_report.json`, and a blocked `final_report.json` with empty `files_changed` and `commands_run` arrays.

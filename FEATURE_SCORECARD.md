@@ -1,6 +1,6 @@
 # Veritas Feature Scorecard
 
-Generated at: `2026-06-12T00:38:57.797238+00:00`
+Generated at: `2026-06-12T21:05:05.261288+00:00`
 
 Scope: **source_mocked**
 

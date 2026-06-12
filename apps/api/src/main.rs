@@ -1,5 +1,8 @@
 mod providers;
 mod schemas;
+mod journey;
+mod evidence_registry;
+mod gates;
 
 use axum::{
     extract::{State, Path as AxumPath},
@@ -25,7 +28,7 @@ use tokio::{fs, process::Command, sync::Mutex, time::timeout};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     http: Client,
     provider_router: ProviderRouter,
     opensearch_url: String,
@@ -118,14 +121,24 @@ struct Health {
 }
 
 #[derive(Debug, Deserialize)]
-struct MathToCodeRequest {
-    formula_id: Option<String>,
-    formula_latex: Option<String>,
-    prompt: Option<String>,
-    language: Option<String>,
-    max_retries: Option<usize>,
-    human_approved: Option<bool>,
-    human_decision: Option<Value>,
+pub(crate) struct MathToCodeRequest {
+    pub(crate) formula_id: Option<String>,
+    pub(crate) formula_record_id: Option<String>,
+    pub(crate) citation_record_id: Option<String>,
+    pub(crate) evidence_manifest_path: Option<String>,
+    pub(crate) evidence_registry_path: Option<String>,
+    pub(crate) review_decision_id: Option<String>,
+    pub(crate) allow_exploratory_unverified: Option<bool>,
+    pub(crate) formula_latex: Option<String>,
+    pub(crate) prompt: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) max_retries: Option<usize>,
+    pub(crate) human_decision: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EvidenceRegistryStatusRequest {
+    path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -342,6 +355,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/opensearch/migrate", post(opensearch_migrate))
         .route("/math-to-code", post(math_to_code))
         .route("/human/checkpoint", post(human_checkpoint))
+        .route("/journey/run", post(journey::run))
+        .route("/journey/:run_id/status", get(journey::status))
+        .route("/journey/:run_id/review", post(journey::review))
+        .route("/journey/:run_id/resume", post(journey::resume))
+        .route("/journey/:run_id/report", get(journey::report))
+        .route("/evidence-registry/status", post(evidence_registry_status))
         .route("/plan", post(plan))
         .route("/run", post(run_agent))
         .route("/llm/chat", post(llm_chat))
@@ -465,7 +484,7 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     )
 }
 
-fn role_json(role: &ModelRole) -> Value {
+pub(crate) fn role_json(role: &ModelRole) -> Value {
     json!({
         "role": role.role,
         "url": role.url,
@@ -566,7 +585,7 @@ async fn read_json_file(path: &Path) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
-async fn read_events_tail(path: &Path, limit: usize) -> Result<Vec<Value>, std::io::Error> {
+pub(crate) async fn read_events_tail(path: &Path, limit: usize) -> Result<Vec<Value>, std::io::Error> {
     let text = match fs::read_to_string(path).await {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -1012,12 +1031,26 @@ fn flatten_sparql_binding(binding: &Value) -> Value {
     Value::Object(flat)
 }
 
+async fn evidence_registry_status(Json(req): Json<EvidenceRegistryStatusRequest>) -> impl IntoResponse {
+    (StatusCode::OK, Json(evidence_registry::registry_status_payload(req.path.as_deref()).await))
+}
+
 async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathToCodeRequest>) -> impl IntoResponse {
     let language = req.language.clone().unwrap_or_else(|| "rust".to_string());
+    let eligibility = match evidence_registry::require_math_to_code_eligibility(&req).await {
+        Ok(value) => value,
+        Err(error) => return error.response(),
+    };
     let formula_context = json!({
-        "formula_id": req.formula_id,
-        "formula_latex": req.formula_latex,
+        "formula_id": eligibility.formula.get("formula_id").cloned().unwrap_or_else(|| json!(req.formula_id)),
+        "formula_record_id": req.formula_record_id,
+        "citation_record_id": req.citation_record_id,
+        "evidence_manifest_path": req.evidence_manifest_path,
+        "evidence_registry_path": eligibility.registry_path.as_ref().map(|path| path.display().to_string()),
+        "formula_latex": eligibility.formula.get("normalized_latex").or_else(|| eligibility.formula.get("raw_latex")).cloned().unwrap_or_else(|| json!(req.formula_latex)),
         "prompt": req.prompt,
+        "evidence_eligibility": eligibility.formula_context,
+        "artifact_status_floor": eligibility.status_floor(),
         "required_method": "surface phenomenon -> representation map -> latent ontology -> transformation space -> invariant -> compression fidelity -> recursive closure -> generative necessity -> symbolic shadow -> transfer -> validation -> code"
     });
     let math_prompt = build_math_to_code_reasoning_prompt(&formula_context, &language);
@@ -1025,7 +1058,7 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
         Ok(value) => value,
         Err(error) => return error.response(),
     };
-    let checkpoint = math_human_checkpoint(&state, &math_reasoning, &formula_context, req.human_approved.unwrap_or(false), req.human_decision.clone());
+    let checkpoint = math_human_checkpoint(&state, &math_reasoning, &formula_context, req.human_decision.clone());
     if let Err(error) = validate_model_json(SchemaKey::HumanCheckpoint, &checkpoint) {
         return error.response();
     }
@@ -1035,15 +1068,16 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
             Json(json!({
                 "ok": false,
                 "status": "awaiting_human_checkpoint",
-                "message": "Veritas completed representation-first math analysis and needs human approval before code generation.",
+                "message": "Veritas completed registry-authorized representation-first math analysis and needs human approval before code generation.",
                 "checkpoint": checkpoint,
                 "math_reasoning": math_reasoning,
-                "next_action": "Review the symbolic shadow, representation map, invariants, risks, and validation requirements, then resubmit /math-to-code with human_approved=true or use `veritas math-to-code` interactive mode."
+                "evidence_eligibility": formula_context.get("evidence_eligibility").cloned().unwrap_or_else(|| json!({})),
+                "next_action": "Approve the representation review with human_decision={\"decision\":\"approve\"}; formula/citation approval must remain persisted in evidence_registry.json."
             })),
         );
     }
     let goal = format!(
-        "Math-to-code task. Treat the formula/problem as a symbolic shadow, not truth. Use this approved representation-first math analysis to generate tested {language} code. Formula context: {}. Math reasoning JSON: {}. Human checkpoint: {}",
+        "Math-to-code task. Treat the formula/problem as a symbolic shadow, not truth. Use this registry-authorized representation-first math analysis to generate tested {language} code. Formula context: {}. Math reasoning JSON: {}. Human checkpoint: {}",
         formula_context,
         math_reasoning,
         checkpoint,
@@ -1054,6 +1088,14 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
             report["kind"] = json!("VeritasMathToCodeRunReport");
             report["math_reasoning"] = math_reasoning;
             report["human_checkpoint"] = checkpoint;
+            report["evidence_eligibility"] = formula_context.get("evidence_eligibility").cloned().unwrap_or_else(|| json!({}));
+            if eligibility.exploratory_unverified {
+                report["ok"] = json!(false);
+                report["final_status"] = json!("generated_unvalidated");
+                report["generated_package_status"] = json!("generated_unvalidated");
+                report["production_status_allowed"] = json!(false);
+                report["remaining_limitations"] = json!(["Formula was supplied without an approved Evidence Eligibility Registry; artifact is exploratory and cannot be production-bound."]);
+            }
             (StatusCode::OK, Json(report))
         }
         Err(error) => error.response(),
@@ -1086,7 +1128,7 @@ fn build_math_to_code_reasoning_prompt(formula_context: &Value, language: &str) 
     }).to_string()
 }
 
-fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_context: &Value, human_approved: bool, human_decision: Option<Value>) -> Value {
+fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_context: &Value, human_decision: Option<Value>) -> Value {
     let policy = state.human_loop_policy.as_str();
     let high_risk = math_reasoning.get("risks").and_then(Value::as_array).map(|items| items.iter().any(|risk| {
         let text = risk.to_string().to_ascii_lowercase();
@@ -1098,16 +1140,19 @@ fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_conte
         "require_high_risk_only" => high_risk,
         _ => high_risk,
     };
+    let decision_value = human_decision.unwrap_or_else(|| if required { json!({"decision":"pending"}) } else { json!({"decision":"auto_approve", "reason":"policy_allows_non_high_risk_auto_approval"}) });
+    let decision = decision_value.get("decision").and_then(Value::as_str).unwrap_or("pending").to_ascii_lowercase();
+    let approved = matches!(decision.as_str(), "approve" | "edit" | "auto_approve") || !required;
     json!({
         "phase": "math_to_code_representation_review",
         "policy": policy,
         "required": required,
-        "approved": human_approved || !required,
-        "decision": human_decision.unwrap_or_else(|| if human_approved { json!({"decision":"approve", "reviewer":"human"}) } else if required { json!({"decision":"pending"}) } else { json!({"decision":"auto_approve", "reason":"policy_allows_non_high_risk_auto_approval"}) }),
-        "question": "Do you approve this formula as a symbolic shadow with the stated representation map, invariants, risks, and validation requirements for code generation?",
+        "approved": approved,
+        "decision": decision_value,
+        "question": "Do you approve this formula as a symbolic shadow with the stated representation map, invariants, risks, and validation requirements for code generation? Formula/citation approval is read only from the Evidence Eligibility Registry.",
         "artifact": {"formula_context": formula_context, "math_reasoning": math_reasoning},
         "options": ["approve", "edit", "reject", "ask_for_explanation"],
-        "status": if human_approved || !required { "approved_or_auto_approved" } else { "pending_human_review" }
+        "status": if approved { "approved_or_auto_approved" } else { "pending_human_review" }
     })
 }
 
@@ -1158,17 +1203,17 @@ async fn human_checkpoint(State(state): State<Arc<AppState>>, Json(req): Json<Hu
     (StatusCode::OK, Json(json!({"ok": true, "checkpoint": checkpoint, "human_checkpoint_gate": gate, "workspace": workspace.display().to_string()})))
 }
 
-fn human_decision_approved(decision: &str, notes: &str) -> bool {
+pub(crate) fn human_decision_approved(decision: &str, notes: &str) -> bool {
     matches!(decision, "approve" | "edit" | "auto_approve") || (decision == "skip" && !notes.trim().is_empty())
 }
 
-fn human_decision_blocks(decision: &str, required: bool, notes: &str) -> bool {
+pub(crate) fn human_decision_blocks(decision: &str, required: bool, notes: &str) -> bool {
     if decision == "reject" { return true; }
     if !required { return false; }
     !human_decision_approved(decision, notes)
 }
 
-fn human_checkpoint_required(policy: &str, phase: &str, artifact: &Value) -> bool {
+pub(crate) fn human_checkpoint_required(policy: &str, phase: &str, artifact: &Value) -> bool {
     match policy {
         "auto_approve" => false,
         "require_all" => true,
@@ -1183,7 +1228,7 @@ fn human_checkpoint_required(policy: &str, phase: &str, artifact: &Value) -> boo
     }
 }
 
-async fn human_checkpoint_gate_summary(workspace: &Path, policy: &str) -> Value {
+pub(crate) async fn human_checkpoint_gate_summary(workspace: &Path, policy: &str) -> Value {
     let checkpoints = read_events_tail(&workspace.join("human_checkpoints.jsonl"), 500).await.unwrap_or_default();
     let required_phases = ["citation_review", "formula_review", "representation_review", "plan_review", "code_architecture_review", "validation_review"];
     let mut latest: HashMap<String, Value> = HashMap::new();
@@ -1530,6 +1575,17 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         report
     };
 
+    let pre_codegen_gates = match gates::run_pre_codegen_gates(state, &workspace, &run_id, &req.goal, &plan, &automatic_shacl).await {
+        Ok(report) => {
+            persist_run_state(&workspace, "PreCodegenGatesPassed", json!({"pre_codegen_gate_report": "pre_codegen_gate_report.json"})).await?;
+            report
+        }
+        Err(error) => {
+            let blocked_report = gates::write_pre_codegen_blocked_report(state, &workspace, &run_id, &req.goal, &language, &plan, error).await?;
+            return Ok(blocked_report);
+        }
+    };
+
     let mut files_changed: Vec<String> = read_json_file(&workspace.join("files_changed.json")).await
         .and_then(|v| v.as_array().cloned())
         .map(|items| items.into_iter().filter_map(|v| v.as_str().map(ToString::to_string)).collect())
@@ -1613,7 +1669,8 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         "provider_route_history": provider_route_history,
         "tool_calls_performed": tool_calls,
         "automatic_shacl": automatic_shacl,
-        "human_checkpoint_policy": state.human_loop_policy,
+        "pre_codegen_gates": pre_codegen_gates,
+        "human_checkpoint_policy": state.human_loop_policy.clone(),
         "human_checkpoints": human_checkpoints,
         "human_checkpoint_gate": human_checkpoint_gate,
         "files_changed": files_changed,
@@ -2249,7 +2306,7 @@ fn turtle_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ").replace('\r', " ")
 }
 
-async fn write_json_file(path: &Path, value: &Value) -> Result<(), ApiFailure> {
+pub(crate) async fn write_json_file(path: &Path, value: &Value) -> Result<(), ApiFailure> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "json.mkdir", format!("Could not create directory for {}: {error}", path.display()), "Check workspace permissions."))?;
     }
@@ -2302,7 +2359,7 @@ async fn append_command_audit(workspace: &Path, result: &Value) -> Result<(), Ap
     Ok(())
 }
 
-async fn append_jsonl(path: &Path, value: &Value) -> Result<(), ApiFailure> {
+pub(crate) async fn append_jsonl(path: &Path, value: &Value) -> Result<(), ApiFailure> {
     use tokio::io::AsyncWriteExt;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await.map_err(|error| ApiFailure::new(StatusCode::INTERNAL_SERVER_ERROR, "jsonl.mkdir", format!("Could not create directory for {}: {error}", path.display()), "Check workspace permissions."))?;
@@ -2316,7 +2373,7 @@ async fn append_jsonl(path: &Path, value: &Value) -> Result<(), ApiFailure> {
     Ok(())
 }
 
-async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -> Result<(), ApiFailure> {
+pub(crate) async fn persist_run_state(workspace: &Path, state_name: &str, payload: Value) -> Result<(), ApiFailure> {
     let state_file = workspace.join("state.json");
     let event_file = workspace.join("events.jsonl");
     let sequence = next_event_sequence(&event_file).await;
@@ -2419,6 +2476,6 @@ fn compact_search_evidence(evidence: &Value) -> Value {
     json!({"hits": compact})
 }
 
-fn now_millis() -> u128 {
+pub(crate) fn now_millis() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
 }
