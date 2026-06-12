@@ -178,3 +178,14 @@ Phase 2 increases source/mocked confidence without claiming that Rust compilatio
 | RDF/Turtle `HumanCheckpoint` facts | Implemented and Python-tested | Host validation pending |
 | Search-ready checkpoint records | Implemented and Python-tested | Host validation pending |
 | `/status/:run_id` checkpoint visibility | Source-level implemented | Rust host validation pending |
+
+<!-- PHASE8_SCORECARD:START -->
+## Phase 8 — Documentation and Metric Automation
+
+- Source/mocked average score: **94.06%**.
+- All non-skipped source/mocked features are A/B: **True**.
+- Live host dimensions are explicitly marked `host_validation_pending`: Rust/Cargo, Docker E2E, and live vLLM/GPU validation.
+- Generated artifacts: `data/scorecard/feature-scorecard.json` and `FEATURE_SCORECARD.md`.
+
+See `FEATURE_SCORECARD.md` for the generated feature table.
+<!-- PHASE8_SCORECARD:END -->
