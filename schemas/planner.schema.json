@@ -1,5 +1,8 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasPlannerPlan",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "objective",
     "steps",
@@ -8,17 +11,164 @@
   ],
   "properties": {
     "objective": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "desired_outcome": {
+          "type": "string"
+        },
+        "success_criteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "steps": {
       "type": "array",
-      "minItems": 1
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tool",
+          "description",
+          "success_criteria"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "retrieval",
+              "sparql",
+              "math_reasoning",
+              "code_generation",
+              "test_runner",
+              "local_command",
+              "shacl_validate",
+              "ontology_check",
+              "noop"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "input": {
+            "type": "object"
+          },
+          "success_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "human_checkpoint": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "files_to_generate": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "not": {
+              "anyOf": [
+                {
+                  "pattern": "^/"
+                },
+                {
+                  "pattern": "(^|/)\\.\\.(/|$)"
+                }
+              ]
+            }
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands_to_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
     },
     "risks": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "risk": {
+            "type": "string"
+          },
+          "mitigation": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          }
+        }
+      }
     },
     "validation_gates": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

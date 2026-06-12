@@ -1,5 +1,8 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasCodegenPackage",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "package_name",
     "language",
@@ -8,17 +11,86 @@
   ],
   "properties": {
     "package_name": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "language": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "files": {
       "type": "array",
-      "minItems": 1
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "anyOf": [
+                {
+                  "pattern": "^/"
+                },
+                {
+                  "pattern": "(^|/)\\.\\.(/|$)"
+                }
+              ]
+            }
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
     },
     "commands": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validation_summary": {
+      "type": "string"
+    },
+    "artifact_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "generated_unvalidated",
+        "validation_failed",
+        "repairing",
+        "production_candidate_validated",
+        "released"
+      ]
     }
   }
 }

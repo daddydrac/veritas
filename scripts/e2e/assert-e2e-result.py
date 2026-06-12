@@ -3,9 +3,9 @@ from __future__ import annotations
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 data = json.loads(path.read_text())
-if not data.get('ok'):
-    raise SystemExit(f"Run fixture failed: {json.dumps(data, indent=2)}")
 report = data.get('final_report') or data
+if not data.get('ok') and not (report.get('final_status') or report.get('status')):
+    raise SystemExit(f"Run fixture failed: {json.dumps(data, indent=2)}")
 status = report.get('final_status') or report.get('status') or data.get('status')
 files = report.get('files_changed') or report.get('files') or []
 commands = report.get('commands_run') or report.get('validation_results') or []

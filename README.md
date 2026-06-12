@@ -687,3 +687,182 @@ veritas gpu-validate
 ```
 
 The deployment proof is intentionally strict: skipped Cargo, Docker, GPU, or live vLLM checks are not counted as production-certified results.
+
+## Validation profiles
+
+Veritas separates source/mocked acceptance from live host acceptance. This is intentional: source/mocked acceptance validates packaging, Python tests, schema files, fake-service contracts, and non-live production proof harnesses. Live host acceptance validates Cargo, Docker Compose, fake-vLLM containers, real OpenSearch/Fuseki/SHACL services, GPU layout, and live vLLM model loading.
+
+Run source/mocked acceptance when Cargo, Docker, or GPU hardware are unavailable:
+
+```bash
+scripts/production-acceptance.sh --profile source-mocked
+```
+
+Run live GPU acceptance on a deployment host that has Docker, Cargo, NVIDIA runtime, and vLLM model access:
+
+```bash
+scripts/production-acceptance.sh --profile single-gpu-prod
+# or
+scripts/production-acceptance.sh --profile multi-gpu-prod
+```
+
+The packaging gate verifies that every shell script is executable and that required workflow files exist:
+
+```bash
+scripts/check-packaging.sh
+```
+
+Use the release packager to preserve Unix executable bits in ZIP artifacts:
+
+```bash
+scripts/package-release.sh ../veritas-release.zip
+```
+
+## Validation modes
+
+Veritas distinguishes **source/mocked acceptance** from **live host acceptance**.
+
+`source/mocked acceptance` validates Python code, source contracts, schemas, fake-vLLM harness files, packaging, docs, and validator behavior without requiring Cargo, Docker, or GPU/vLLM runtime. `live host acceptance` validates Cargo, Docker Compose, fake-vLLM Docker E2E, OpenSearch, Fuseki, SHACL, and live vLLM/GPU behavior on a real deployment host.
+
+The following checks are reported as `host_validation_pending` when unavailable in the current environment:
+
+```text
+cargo.check
+docker.compose.config
+live_vllm_smoke
+```
+
+Run mocked/source acceptance with:
+
+```bash
+scripts/validate-host.sh --profile fake-ci
+```
+
+Run live GPU acceptance on a target host with:
+
+```bash
+scripts/production-acceptance.sh --profile single-gpu-prod
+```
+
+
+## Phase 1: Provider and structured-output hardening
+
+Veritas now treats every model response as untrusted until it passes role-specific JSON Schema validation. Planner, codegen, math reasoning, repair, human checkpoint, and run-report schemas live under `schemas/` and are loaded by the Rust API before any tool, file, command, OpenSearch, or Fuseki action can proceed.
+
+The vLLM provider path now checks `/v1/models`, records provider routes, applies retry/backoff policy, uses circuit-breaker state, and only falls back to a remote OpenAI-compatible provider when that fallback is explicitly configured. Remote fallback can be set per role with `VERITAS_REMOTE_PLANNER_MODEL`, `VERITAS_REMOTE_CODE_MODEL`, and `VERITAS_REMOTE_MATH_MODEL`.
+
+Mocks remain acceptable for this source-level pass, but the request/response contract must match vLLM structured outputs using role-specific schemas. Live vLLM, Docker E2E, and Cargo validation remain host-validation-pending.
+
+## Phase 2 Source-Mocked E2E Proof
+
+For environments without Cargo, Docker, or live vLLM, Veritas includes a source-mocked control-plane E2E proof:
+
+```bash
+scripts/e2e/source-mocked-control-plane-e2e.sh
+```
+
+This proof creates a run workspace, validates fake planner/math/codegen/repair outputs against the same JSON schemas used by the API, simulates a failed validation, applies a repair, records command audit data, and emits a schema-valid `final_report.json` with `production_candidate_validated` status. It is not a replacement for live host acceptance; Cargo, Docker, OpenSearch, Fuseki, SHACL, and live vLLM validation remain `host_validation_pending` until run on a proper host.
+
+## Phase 3 source/mocked execution safety
+
+Veritas now includes a source/mocked execution-safety proof for environments that cannot run Docker, Cargo, or live vLLM. Run:
+
+```bash
+scripts/e2e/source-mocked-execution-safety.sh
+```
+
+This validates production runner policy, command allowlisting, generated-file path containment, symlink escape rejection, run locks, stale-lock handling, cancellation blocking, state sequencing, and `run_index.jsonl` persistence.
+
+Production-like profiles default to the Docker sandbox runner:
+
+```bash
+VERITAS_PROFILE=single-gpu-prod
+```
+
+Local shell execution is blocked in production profiles unless explicitly enabled for trusted development:
+
+```bash
+VERITAS_ALLOW_LOCAL_COMMAND_RUNNER=true
+```
+
+Docker sandbox runtime validation is still a host-only check. Source/mocked acceptance proves the policy and artifacts; live host acceptance proves the container runtime.
+
+## Phase 4 — Retrieval and Ontology Source-Mocked Proof
+
+Phase 4 adds source-level/mocked proof for OpenSearch and Fuseki behavior without requiring live OpenSearch or live Fuseki in restricted environments.
+
+Run:
+
+```bash
+scripts/e2e/source-mocked-retrieval-ontology.sh
+```
+
+This validates OpenSearch FAISS/HNSW mapping contracts, vector dimension rejection, versioned index/read-write alias migration behavior, retrieval fallback, Fuseki named graph discipline, no-PDF-binary RDF uploads, run-report RDF facts, and SPARQL query-pack summarization.
+
+Live OpenSearch/Fuseki validation remains a host acceptance gate; this phase proves the source contracts that the live services must satisfy.
+
+## Phase 5 — SHACL and Mathematical Governance Source-Mocked Proof
+
+Phase 5 makes the automatic governance gate load both `packages/ontology/shacl/veritas-core.shacl.ttl` and `packages/ontology/shacl/veritas-math.shacl.ttl`. The source/mocked proof validates that mathematical research artifacts cannot move toward production code unless they include symbolic-shadow provenance, OCR/review confidence, representation maps, invariants, validation requirements, proof/transfer status, and production artifact validation.
+
+Run:
+
+```bash
+scripts/e2e/source-mocked-shacl-governance.sh
+```
+
+This writes `data/e2e/source-mocked-shacl-governance/phase5-summary.json` and proves the SHACL governance contract without requiring live Docker or pySHACL execution.
+
+### Phase 6: formula OCR and review contracts
+
+Formula extraction now supports a configurable OCR/review contract. The default remains safe and auditable: formulas are preserved as symbolic shadows even when image rendering or OCR is unavailable. For source/mocked validation, run:
+
+```bash
+scripts/e2e/source-mocked-formula-ocr-review.sh
+```
+
+Configure OCR providers with:
+
+```bash
+export VERITAS_LATEX_OCR_PROVIDER=command
+export VERITAS_LATEX_OCR_COMMAND='python /opt/ocr/image_to_latex.py {image}'
+```
+
+or:
+
+```bash
+export VERITAS_LATEX_OCR_PROVIDER=http
+export VERITAS_LATEX_OCR_URL='http://latex-ocr:8000/ocr'
+```
+
+Review formulas and citations before using research artifacts for production code:
+
+```bash
+python -m veritas_ingest.cli review-formulas --chunks data/chunks/paper.chunks.jsonl --decision approve
+python -m veritas_ingest.cli review-citations --chunks data/chunks/paper.chunks.jsonl --decision edit --corrected-citation 'Doe, J. (2026). Corrected title.'
+python -m veritas_ingest.cli validate-formulas --chunks data/chunks/paper.chunks.jsonl
+```
+
+The mocked OCR path proves contracts, not corpus-level OCR accuracy. Real arXiv corpus validation remains host/corpus dependent.
+
+## Phase 7 — Human Review Workflow
+
+Veritas now includes a full source/mocked human-in-the-loop workflow covering
+citation, formula, representation, plan, code architecture, and validation
+review.  The workflow supports `auto_approve`, `require_all`, and
+`require_high_risk_only` policies.  Decisions are persisted to JSONL run events,
+final report fields, RDF/Turtle `HumanCheckpoint` facts, and search-friendly
+checkpoint records.
+
+Run the Phase 7 source/mocked proof:
+
+```bash
+scripts/e2e/source-mocked-human-workflow.sh
+```
+
+Use the ingestion CLI directly:
+
+```bash
+python -m veritas_ingest.cli review-workflow --policy require_all --decision approve
+python -m veritas_ingest.cli review-checkpoint --phase plan_review --decision approve --artifact-json '{"risks":["high"]}'
+```

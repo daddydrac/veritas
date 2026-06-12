@@ -1,5 +1,8 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasRepresentationFirstMathReasoning",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "summary",
     "axiom_map",
@@ -20,22 +23,22 @@
     "status"
   ],
   "properties": {
-    "summary": {"type": "string"},
-    "axiom_map": {"type": "array"},
-    "surface_phenomenon": {"type": "object"},
-    "representation_hypothesis": {"type": "string"},
-    "candidate_representation_map": {"type": "object"},
-    "primitive_ontology": {"type": "array"},
-    "transformation_space": {"type": "array"},
-    "constraint_geometry": {"type": "array"},
-    "invariants": {"type": "array"},
-    "compression_fidelity": {"type": "object"},
-    "recursive_closure": {"type": "object"},
-    "generative_necessity": {"type": "array"},
-    "symbolic_shadows": {"type": "array"},
-    "transfer_tests": {"type": "array"},
-    "risks": {"type": "array"},
-    "validation_requirements": {"type": "array"},
-    "status": {"type": "string"}
+    "summary": {"type": "string", "minLength": 1},
+    "axiom_map": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "surface_phenomenon": {"type": "object", "minProperties": 1, "additionalProperties": true},
+    "representation_hypothesis": {"type": "string", "minLength": 1},
+    "candidate_representation_map": {"type": "object", "minProperties": 1, "additionalProperties": true},
+    "primitive_ontology": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "transformation_space": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "constraint_geometry": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "invariants": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "compression_fidelity": {"type": "object", "minProperties": 1, "additionalProperties": true},
+    "recursive_closure": {"type": "object", "minProperties": 1, "additionalProperties": true},
+    "generative_necessity": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "symbolic_shadows": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "transfer_tests": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": true}},
+    "risks": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+    "validation_requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "status": {"type": "string", "enum": ["proved", "formally_verified", "experimentally_supported", "plausible", "speculative", "false", "blocked"]}
   }
 }

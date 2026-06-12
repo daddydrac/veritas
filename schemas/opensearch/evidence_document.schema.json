@@ -3,46 +3,153 @@
   "$id": "https://github.com/daddydrac/veritas/schemas/opensearch/evidence_document.schema.json",
   "title": "Veritas OpenSearch Evidence Document",
   "type": "object",
-  "required": ["chunk_id", "paper_id", "text"],
+  "required": [
+    "chunk_id",
+    "paper_id",
+    "text"
+  ],
   "properties": {
-    "doc_id": {"type": "string"},
-    "paper_id": {"type": "string"},
-    "chunk_id": {"type": "string"},
-    "formula_id": {"type": "string"},
-    "run_id": {"type": "string"},
-    "source_type": {"type": "string"},
-    "status": {"type": "string"},
-    "sha256": {"type": "string"},
-    "title": {"type": "string"},
-    "abstract": {"type": "string"},
-    "apa_citation": {"type": "string"},
-    "text": {"type": "string"},
-    "chunk_text": {"type": "string"},
-    "formula_description": {"type": "string"},
-    "technical_summary": {"type": "string"},
-    "embedding_model": {"type": "string"},
-    "embedding_norm": {"type": "number"},
-    "embedding": {"type": "array", "items": {"type": "number"}},
-    "formula_embedding": {"type": "array", "items": {"type": "number"}},
+    "doc_id": {
+      "type": "string"
+    },
+    "paper_id": {
+      "type": "string"
+    },
+    "chunk_id": {
+      "type": "string"
+    },
+    "formula_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "abstract": {
+      "type": "string"
+    },
+    "apa_citation": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "chunk_text": {
+      "type": "string"
+    },
+    "formula_description": {
+      "type": "string"
+    },
+    "technical_summary": {
+      "type": "string"
+    },
+    "embedding_model": {
+      "type": "string"
+    },
+    "embedding_norm": {
+      "type": "number"
+    },
+    "embedding": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "formula_embedding": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
     "formulas": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["formula_id", "latex"],
+        "required": [
+          "formula_id",
+          "latex"
+        ],
         "properties": {
-          "formula_id": {"type": "string"},
-          "latex": {"type": "string"},
-          "normalized_latex": {"type": "string"},
-          "description": {"type": "string"},
-          "formula_image_path": {"type": "string"},
-          "formula_image_status": {"type": "string"},
-          "latex_ocr_status": {"type": "string"},
-          "human_validated": {"type": "boolean"},
-          "page": {"type": "integer"},
-          "bbox": {"type": "array", "items": {"type": "number"}},
-          "source": {"type": "string"},
-          "pattern": {"type": "string"},
-          "confidence": {"type": "number"}
+          "formula_id": {
+            "type": "string"
+          },
+          "latex": {
+            "type": "string"
+          },
+          "normalized_latex": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "formula_image_path": {
+            "type": "string"
+          },
+          "formula_image_status": {
+            "type": "string"
+          },
+          "latex_ocr_status": {
+            "type": "string"
+          },
+          "human_validated": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "formula_image_engine": {
+            "type": "string"
+          },
+          "formula_image_confidence": {
+            "type": "number"
+          },
+          "bbox_status": {
+            "type": "string"
+          },
+          "codegen_eligibility_status": {
+            "type": "string"
+          },
+          "review_required": {
+            "type": "boolean"
+          },
+          "use_for_codegen": {
+            "type": "boolean"
+          },
+          "human_validation_status": {
+            "type": "string"
+          },
+          "latex_ocr_engine": {
+            "type": "string"
+          },
+          "latex_ocr_confidence": {
+            "type": "number"
+          }
         },
         "additionalProperties": true
       }
@@ -52,15 +159,81 @@
       "items": {
         "type": "object",
         "properties": {
-          "apa": {"type": "string"},
-          "doi": {"type": "string"},
-          "url": {"type": "string"},
-          "validated": {"type": "boolean"}
+          "apa": {
+            "type": "string"
+          },
+          "doi": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "validated": {
+            "type": "boolean"
+          }
         },
         "additionalProperties": true
       }
     },
-    "metadata": {"type": "object"}
+    "metadata": {
+      "type": "object"
+    },
+    "citation_review_status": {
+      "type": "string"
+    },
+    "citation_human_validated": {
+      "type": "boolean"
+    },
+    "citation_reviewer": {
+      "type": "string"
+    },
+    "citation_usable_for_audit": {
+      "type": "boolean"
+    },
+    "human_checkpoint_phase": {
+      "type": "string"
+    },
+    "human_checkpoint_decision": {
+      "type": "string"
+    },
+    "human_checkpoint_status": {
+      "type": "string"
+    },
+    "human_checkpoint_blocked": {
+      "type": "boolean"
+    },
+    "human_checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "reviewer": {
+            "type": "string"
+          },
+          "artifact_digest": {
+            "type": "string"
+          },
+          "timestamp_ms": {
+            "type": "integer"
+          }
+        }
+      }
+    }
   },
   "additionalProperties": true
 }
