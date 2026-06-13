@@ -24,17 +24,20 @@ pub(crate) async fn evaluate(workspace: &Path, goal: &str, plan: &Value) -> Valu
             "gate": "math_tools",
             "stage": "math_tools_gate",
             "status": "blocked_by_math_tools",
-            "reason": "Math-heavy execution requires a real math_validation_report.json produced by the Tool-Verified Math Engine before code generation.",
+            "reason": "Math-heavy execution requires math_validation_report.json produced by the Tool-Verified Math Engine before code generation.",
             "math_validation_report_path": report_path.display().to_string(),
-            "next_action": "Run the Tool-Verified Math Engine for the approved formulas, then resume. This gate does not accept LLM-only mathematical claims.",
+            "next_action": "Run the Tool-Verified Math Engine for eligible formulas, then resume. This gate rejects LLM-only mathematical claims.",
             "files_written_allowed": false,
             "commands_run_allowed": false,
         });
     };
 
-    let ok = report.get("ok").and_then(Value::as_bool).unwrap_or(false)
-        && !report.get("counterexamples").and_then(Value::as_array).map(|items| !items.is_empty()).unwrap_or(false)
-        && !report.get("blocking_findings").and_then(Value::as_array).map(|items| !items.is_empty()).unwrap_or(false);
+    let report_ok = report.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let counterexamples = report.get("counterexamples").and_then(Value::as_array).cloned().unwrap_or_default();
+    let blocking_findings = report.get("blocking_findings").and_then(Value::as_array).cloned().unwrap_or_default();
+    let tool_results = report.get("tool_results").and_then(Value::as_array).cloned().unwrap_or_default();
+    let status = report.get("status").and_then(Value::as_str).unwrap_or("unknown");
+    let ok = report_ok && counterexamples.is_empty() && blocking_findings.is_empty() && !tool_results.is_empty();
     json!({
         "ok": ok,
         "enforced": true,
@@ -42,7 +45,11 @@ pub(crate) async fn evaluate(workspace: &Path, goal: &str, plan: &Value) -> Valu
         "gate": "math_tools",
         "stage": "math_tools_gate",
         "status": if ok { "math_tools_validated" } else { "blocked_by_math_tools" },
+        "math_validation_status": status,
         "math_validation_report_path": report_path.display().to_string(),
+        "tool_results_count": tool_results.len(),
+        "counterexamples_count": counterexamples.len(),
+        "blocking_findings_count": blocking_findings.len(),
         "report": report,
         "files_written_allowed": ok,
         "commands_run_allowed": ok,
@@ -50,7 +57,7 @@ pub(crate) async fn evaluate(workspace: &Path, goal: &str, plan: &Value) -> Valu
 }
 
 async fn is_math_heavy(workspace: &Path, goal: &str, plan: &Value) -> bool {
-    if workspace.join("formula_manifest.json").exists() || workspace.join("formulas.jsonl").exists() {
+    if workspace.join("formula_manifest.json").exists() || workspace.join("formulas.jsonl").exists() || workspace.join("evidence_registry.json").exists() {
         return true;
     }
     if plan.get("symbolic_shadows").is_some() || plan.get("math_readiness").is_some() {

@@ -1046,3 +1046,47 @@ The gate engine evaluates:
 - SHACL conformance status.
 
 Blocked gates produce `gate_decisions.jsonl`, `pre_codegen_gate_report.json`, `pre_codegen_blocked_report.json`, and a blocked `final_report.json` with empty `files_changed` and `commands_run` arrays.
+
+## Phase 5 — Tool-Verified Math Engine
+
+Veritas now includes a real Tool-Verified Math Engine. Math-heavy runs no longer have to rely only on LLM reasoning before code generation. The application can call the `math-tools` service, persist `math_tool_calls.jsonl`, `math_tool_results.jsonl`, and `math_validation_report.json`, and the pre-codegen Gate Engine blocks when the report contains blocking findings or counterexamples.
+
+The math-tools service exposes real executable tools: `parse_latex`, `normalize_expression`, `symbolic_simplify`, `symbolic_differentiate`, `symbolic_equivalence`, `numeric_validate`, `counterexample_search`, `dimension_check`, and `generate_property_tests`. The service uses SymPy, NumPy, SciPy/mpmath-compatible numeric evaluation, and generated property-test code. No model output is treated as mathematical truth unless tool results, governance gates, and validation artifacts support it.
+
+
+## Phase 6 — artifact-based SHACL governance
+
+Veritas now has artifact-based SHACL governance. The application builds SHACL data from actual workspace artifacts rather than relying only on synthetic plan TTL. `VERITAS_GOVERNANCE_MODE` controls enforce/advisory/disabled behavior, and the default governed mode is enforce.
+
+
+## Phase 7 — Artifact Decision Engine
+
+Phase 7 adds a canonical Artifact Decision Engine in `apps/api/src/artifact_decision.rs`. Final artifact status is no longer granted directly by the code-generation loop. The engine reads real run artifacts, gate decisions, validation results, human checkpoint state, SHACL results, and host-validation evidence before producing `artifact_decision.json`.
+
+Important behavior:
+
+- validation success alone does not imply production readiness;
+- missing human approval results in `awaiting_human_approval`;
+- failed SHACL results in `blocked_by_governance` when governance is enforced;
+- failed validation results in `validation_failed` or `repair_failed`;
+- missing host validation results in `local_validated_host_pending`;
+- `production_validated` is only possible when host validation evidence exists and passes.
+
+## Phase 8 — Strengthened lineage schemas
+
+Phase 8 adds application-level lineage enforcement. `planner.schema.json`, `codegen.schema.json`, and `run_report.schema.json` now require explicit traceability fields. `apps/api/src/lineage.rs` derives allowed IDs from real workspace artifacts and rejects unknown or empty lineage arrays before file writes. This closes the gap where artifacts could be reported as auditable without every generated file being contractually linked to source evidence, citations, formulas, plan steps, validation gates, and governance decisions.
+
+
+## Phase 8 — Lineage Schemas and Pre-Write Enforcement
+
+Veritas now treats lineage as an executable contract. `schemas/planner.schema.json` requires evidence, citation, formula, risk, validation, and human-checkpoint identifiers on plan steps. `schemas/codegen.schema.json` requires each generated file to cite plan steps, evidence, citations, formulas, and validation gates. `apps/api/src/lineage.rs` validates these references against the run workspace before `write_generated_files` executes. `schemas/run_report.schema.json` now requires the full audit lineage bundle.
+
+## Phase 9 — Mandatory evidence-grounded planning
+
+Veritas now treats planning as a governed artifact. `apps/api/src/planning_context.rs` builds `planning_context.json` from approved citations, eligible formulas, retrieved evidence, ontology facts, representation status, and SHACL status. Production-bound planner calls are blocked until approved evidence exists, and planner output is rejected if it invents evidence, citation, or formula IDs.
+
+## Phase 9 — Planning Context and mandatory evidence grounding
+
+Veritas now creates a first-class **Planning Context** before model planning. `planning_context.json` is generated from real evidence artifacts and contains approved evidence identifiers, approved citation identifiers, eligible formula identifiers, ontology facts, formula traces, SHACL status, and representation context. Production-bound plans with no approved evidence are blocked before the planner model runs.
+
+This closes the prior gap where retrieval could occur before planning but the planner was not forced to reference approved evidence. Planner output is now validated against `planning_context.json`, and generated code remains downstream of evidence-grounded planning.

@@ -43,7 +43,7 @@ pub(crate) async fn run_pre_codegen_gates(
         collect(&mut decisions, &mut blocked, human_decision);
     }
 
-    let shacl_decision = shacl::evaluate_pre_codegen(automatic_shacl, state.shacl_enforce);
+    let shacl_decision = shacl::evaluate_pre_codegen(automatic_shacl, &state.governance_mode);
     record_decision(workspace, &shacl_decision).await?;
     collect(&mut decisions, &mut blocked, shacl_decision);
 
@@ -55,7 +55,8 @@ pub(crate) async fn run_pre_codegen_gates(
         "timestamp_ms": now_millis(),
         "policy": {
             "human_loop_policy": state.human_loop_policy.clone(),
-            "shacl_enforced": state.shacl_enforce,
+            "governance_mode": state.governance_mode.as_str(),
+            "shacl_enforced": state.governance_mode.enforces(),
             "required_human_checkpoints": human::required_pre_codegen_checkpoint_phases(),
         },
         "decisions": decisions,
@@ -102,9 +103,23 @@ pub(crate) async fn write_pre_codegen_blocked_report(
 ) -> Result<Value, ApiFailure> {
     let gate_details = gate_error.details.clone();
     let blocked_stage = first_blocked_stage(&gate_details).unwrap_or_else(|| "pre_codegen_gate".to_string());
-    let status = status_for_stage(&blocked_stage);
+    let artifact_decision = crate::artifact_decision::decide_blocked_pre_codegen(
+        state,
+        workspace,
+        run_id,
+        goal,
+        language,
+        &gate_details,
+    ).await?;
+    let status = artifact_decision.get("artifact_status").and_then(Value::as_str).unwrap_or("failed").to_string();
     let human_checkpoints = crate::read_events_tail(&workspace.join("human_checkpoints.jsonl"), 500).await.unwrap_or_default();
     let human_checkpoint_gate = crate::human_checkpoint_gate_summary(workspace, &state.human_loop_policy).await;
+    let plan_envelope = crate::read_json_file(&workspace.join("plan_envelope.json")).await.unwrap_or_else(|| json!({"plan": plan}));
+    let empty_code_package = json!({});
+    let empty_commands: Vec<Value> = Vec::new();
+    let empty_validation: Vec<Value> = Vec::new();
+    let empty_repairs: Vec<Value> = Vec::new();
+    let report_lineage = crate::lineage::build_report_lineage(workspace, &plan_envelope, plan, &empty_code_package, &empty_commands, &empty_validation, &empty_repairs, &artifact_decision).await?;
     let report = json!({
         "ok": false,
         "kind": "VeritasAutonomousRunReport",
@@ -112,30 +127,44 @@ pub(crate) async fn write_pre_codegen_blocked_report(
         "workspace": workspace.display().to_string(),
         "original_task": goal,
         "language": language,
+        "source_documents": report_lineage.get("source_documents").cloned().unwrap_or_else(|| json!({})),
+        "citations": report_lineage.get("citations").cloned().unwrap_or_else(|| json!({})),
+        "formulas": report_lineage.get("formulas").cloned().unwrap_or_else(|| json!({})),
+        "review_decisions": report_lineage.get("review_decisions").cloned().unwrap_or_else(|| json!({})),
+        "representation_model": report_lineage.get("representation_model").cloned().unwrap_or_else(|| json!({})),
+        "planning_context": report_lineage.get("planning_context").cloned().unwrap_or_else(|| json!({})),
         "generated_plan": plan,
+        "plan_lineage": report_lineage.get("plan_lineage").cloned().unwrap_or_else(|| json!({})),
+        "file_lineage": report_lineage.get("file_lineage").cloned().unwrap_or_else(|| json!([])),
+        "command_lineage": report_lineage.get("command_lineage").cloned().unwrap_or_else(|| json!([])),
+        "validation_lineage": report_lineage.get("validation_lineage").cloned().unwrap_or_else(|| json!([])),
+        "repair_lineage": report_lineage.get("repair_lineage").cloned().unwrap_or_else(|| json!([])),
+        "governance_lineage": report_lineage.get("governance_lineage").cloned().unwrap_or_else(|| json!({})),
         "model_routes_used": {"planner": crate::role_json(&state.planner_model), "code": crate::role_json(&state.code_model), "math": crate::role_json(&state.math_model)},
         "tool_calls_performed": [],
         "human_checkpoint_policy": state.human_loop_policy.clone(),
         "human_checkpoints": human_checkpoints,
         "human_checkpoint_gate": human_checkpoint_gate,
         "pre_codegen_gate": gate_details,
+        "artifact_decision": artifact_decision,
         "files_changed": [],
         "commands_run": [],
         "validation_results": [],
         "attempts_performed": 0,
         "retries_performed": 0,
         "retry_history": [],
-        "generated_package_status": status,
-        "final_status": status,
+        "generated_package_status": status.clone(),
+        "artifact_status": status.clone(),
+        "final_status": status.clone(),
         "blocked_stage": blocked_stage.clone(),
         "remaining_limitations": ["Pre-codegen gates blocked execution before code generation. Resolve the listed gate decisions and resume."],
         "code_model_output": {},
-        "artifact_lifecycle_state": status,
+        "artifact_lifecycle_state": status.clone(),
         "state": status,
     });
     write_json_file(&workspace.join("pre_codegen_blocked_report.json"), &report).await?;
     write_json_file(&workspace.join("final_report.json"), &report).await?;
-    crate::persist_run_state(workspace, "PreCodegenBlocked", json!({"final_status": status, "blocked_stage": blocked_stage.clone(), "report": "final_report.json"})).await?;
+    crate::persist_run_state(workspace, "PreCodegenBlocked", json!({"final_status": report.get("final_status"), "artifact_decision": "artifact_decision.json", "blocked_stage": blocked_stage.clone(), "report": "final_report.json"})).await?;
     Ok(report)
 }
 

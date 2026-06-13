@@ -55,3 +55,7 @@ When approval is missing, the application returns an auditable blocked report:
 ## Why this matters
 
 The earlier implementation recorded human checkpoints after code generation and validation. Phase 4 changes that behavior: approval gates now causally block codegen before any generated files or commands can exist.
+
+## Phase 5 handoff
+
+Phase 5 adds the Tool-Verified Math Engine that produces `math_validation_report.json` before these gates evaluate math-heavy runs.

@@ -34,6 +34,9 @@ x-veritas-env: &veritas-env
   VERITAS_MATH_VLLM_URL: ${VERITAS_MATH_VLLM_URL:-http://vllm-math:8000}
   VERITAS_REQUIRE_MODELS: ${VERITAS_REQUIRE_MODELS:-false}
   VERITAS_SHACL_URL: http://shacl:8080
+  VERITAS_MATH_TOOLS_URL: http://math-tools:8091
+  VERITAS_MATH_TOOLS_TIMEOUT_SECS: ${VERITAS_MATH_TOOLS_TIMEOUT_SECS:-60}
+  VERITAS_MATH_TOOL_SEQUENCE: ${VERITAS_MATH_TOOL_SEQUENCE:-parse_latex,normalize_expression,symbolic_simplify,numeric_validate,counterexample_search,generate_property_tests}
 
 x-vllm-env: &vllm-env
   HF_HOME: /models/huggingface
@@ -148,6 +151,8 @@ services:
         condition: service_healthy
       embedding:
         condition: service_healthy
+      math-tools:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3).read()\""]
       interval: 10s
@@ -188,6 +193,24 @@ services:
         condition: service_healthy
     profiles: ["tools"]
 
+
+
+  math-tools:
+    build:
+      context: .
+      dockerfile: services/math_tools/Dockerfile
+    environment:
+      VERITAS_MATH_TOOLS_PORT: 8091
+      VERITAS_MATH_TOOLS_SAMPLE_COUNT: ${VERITAS_MATH_TOOLS_SAMPLE_COUNT:-25}
+      VERITAS_MATH_TOOLS_TOLERANCE: ${VERITAS_MATH_TOOLS_TOLERANCE:-1e-7}
+      VERITAS_MATH_TOOL_SEQUENCE: ${VERITAS_MATH_TOOL_SEQUENCE:-parse_latex,normalize_expression,symbolic_simplify,numeric_validate,counterexample_search,generate_property_tests}
+    ports:
+      - "${VERITAS_MATH_TOOLS_PORT:-8091}:8091"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8091/health\", timeout=3).read()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   shacl:
     build:

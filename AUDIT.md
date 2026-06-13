@@ -279,6 +279,56 @@ Resolved behavior:
 
 Remaining future work:
 
-- Phase 5 will add the real Tool-Verified Math Engine that produces `math_validation_report.json`.
+- Phase 5 has added the real Tool-Verified Math Engine that produces `math_validation_report.json` and gates math-heavy codegen through tool results.
 - Phase 6 will make SHACL governance mode default-on and artifact-bundle based.
 - Phase 7 will replace direct final-status mutation with the Artifact Decision Engine.
+
+## Phase 5 — Tool-Verified Math Engine
+
+Veritas now includes a real Tool-Verified Math Engine. Math-heavy runs no longer have to rely only on LLM reasoning before code generation. The application can call the `math-tools` service, persist `math_tool_calls.jsonl`, `math_tool_results.jsonl`, and `math_validation_report.json`, and the pre-codegen Gate Engine blocks when the report contains blocking findings or counterexamples.
+
+The math-tools service exposes real executable tools: `parse_latex`, `normalize_expression`, `symbolic_simplify`, `symbolic_differentiate`, `symbolic_equivalence`, `numeric_validate`, `counterexample_search`, `dimension_check`, and `generate_property_tests`. The service uses SymPy, NumPy, SciPy/mpmath-compatible numeric evaluation, and generated property-test code. No model output is treated as mathematical truth unless tool results, governance gates, and validation artifacts support it.
+
+
+## Phase 6 audit update
+
+SHACL is now governed by `VERITAS_GOVERNANCE_MODE` and validates an artifact bundle built from real run artifacts. Pre-codegen SHACL blocks generated files and validation commands in enforce mode. Final SHACL runs after validation and can downgrade the artifact lifecycle to `blocked_by_governance`.
+
+
+## Phase 7 — Artifact Decision Engine
+
+Phase 7 adds a canonical Artifact Decision Engine in `apps/api/src/artifact_decision.rs`. Final artifact status is no longer granted directly by the code-generation loop. The engine reads real run artifacts, gate decisions, validation results, human checkpoint state, SHACL results, and host-validation evidence before producing `artifact_decision.json`.
+
+Important behavior:
+
+- validation success alone does not imply production readiness;
+- missing human approval results in `awaiting_human_approval`;
+- failed SHACL results in `blocked_by_governance` when governance is enforced;
+- failed validation results in `validation_failed` or `repair_failed`;
+- missing host validation results in `local_validated_host_pending`;
+- `production_validated` is only possible when host validation evidence exists and passes.
+
+## Phase 8 audit update — lineage schemas and runtime enforcement
+
+Status: implemented at source/application level.
+
+The previous audit identified incomplete artifact-to-evidence lineage. Phase 8 strengthens lineage by requiring planner step IDs, evidence IDs, citation IDs, formula IDs, risk IDs, validation gate IDs, and human checkpoint IDs in the planner schema. Codegen output must include per-file and per-command lineage. `apps/api/src/lineage.rs` validates these references before `write_generated_files`, so lineage is now a pre-write gate rather than report decoration.
+
+Host validation remains pending where Cargo/Docker/live services are unavailable in this sandbox.
+
+
+## Phase 8 — Lineage Schema Enforcement
+
+Resolved gap: final reports and generated files previously carried useful audit information, but lineage was not required by schema or enforced before writes. Phase 8 adds `apps/api/src/lineage.rs`, strengthens planner/codegen/run-report schemas, writes `planning_context.json` and `file_lineage.json`, validates codegen lineage before file writes, and requires report lineage fields.
+
+Remaining host-only validation: Cargo/Rust compilation, Docker Compose E2E, and live vLLM/GPU validation remain unavailable in this sandbox.
+
+## Phase 9 audit note — evidence controls planner execution
+
+Resolved gap: retrieval and evidence metadata are no longer passive inputs for planning. The planner is now called only after `planning_context.json` is built from approved evidence, and planner output must cite IDs from that context. Empty-evidence planning is limited to `execution_mode=dev_exploratory` and cannot claim production readiness.
+
+## Phase 9 audit — Evidence-grounded planning
+
+Phase 9 resolves the gap that planning could still proceed without a mandatory approved-evidence context. The API now uses `apps/api/src/planning_context.rs` to build `planning_context.json` before planner invocation. The context is generated from the Evidence Eligibility Registry, approved citations, eligible formulas, retrieval results, formula trace SPARQL output, ontology facts, SHACL status, and representation artifacts.
+
+Production-bound planning blocks with `planning_context.no_approved_evidence` when approved evidence or approved citation provenance is missing. `VERITAS_ALLOW_EMPTY_EVIDENCE` is restricted to `execution_mode=dev_exploratory`, and the Artifact Decision Engine classifies that path as `dev_only_unverified`.

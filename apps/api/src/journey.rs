@@ -181,6 +181,8 @@ async fn run_inner(state: &AppState, req: JourneyRunRequest) -> Result<Value, Ap
         language: Some(language.clone()),
         size: req.size,
         max_retries: req.max_retries,
+        execution_mode: Some(mode.clone()),
+        preloaded_artifacts: None,
     };
     let mut persisted_req: RunResumeRequest = run_req.clone().into();
     persisted_req.run_id = run_id.clone();

@@ -3,6 +3,12 @@ mod schemas;
 mod journey;
 mod evidence_registry;
 mod gates;
+mod math_tools;
+mod tools;
+mod governance;
+mod artifact_decision;
+mod lineage;
+mod planning_context;
 
 use axum::{
     extract::{State, Path as AxumPath},
@@ -13,6 +19,7 @@ use axum::{
 };
 use reqwest::Client;
 use providers::{ModelRole, ProviderError, ProviderRouter};
+use governance::GovernanceMode;
 use schemas::{SchemaKey, schema_json, validate_json_schema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -44,6 +51,8 @@ pub(crate) struct AppState {
     fuseki_ping_url: String,
     embedding_url: String,
     shacl_url: String,
+    math_tools_url: String,
+    math_tools_timeout_secs: u64,
     require_models: bool,
     planner_model: ModelRole,
     code_model: ModelRole,
@@ -55,7 +64,7 @@ pub(crate) struct AppState {
     remote_model_name: String,
     remote_model_api_key_env: String,
     command_runner: String,
-    shacl_enforce: bool,
+    governance_mode: GovernanceMode,
     human_loop_policy: String,
     fuseki_data_url: String,
     graph_ontology_uri: String,
@@ -112,6 +121,9 @@ struct RunRequest {
     language: Option<String>,
     size: Option<u32>,
     max_retries: Option<usize>,
+    execution_mode: Option<String>,
+    #[serde(default)]
+    preloaded_artifacts: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -139,6 +151,16 @@ pub(crate) struct MathToCodeRequest {
 #[derive(Debug, Deserialize)]
 struct EvidenceRegistryStatusRequest {
     path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MathToolsValidateRequest {
+    workspace: Option<String>,
+    goal: Option<String>,
+    formula_latex: Option<String>,
+    formula_id: Option<String>,
+    assumptions: Option<Vec<String>>,
+    variables: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -191,6 +213,9 @@ struct RunResumeRequest {
     language: Option<String>,
     size: Option<u32>,
     max_retries: Option<usize>,
+    execution_mode: Option<String>,
+    #[serde(default)]
+    preloaded_artifacts: Option<Value>,
 }
 
 impl From<RunRequest> for RunResumeRequest {
@@ -201,6 +226,8 @@ impl From<RunRequest> for RunResumeRequest {
             language: value.language,
             size: value.size,
             max_retries: value.max_retries,
+            execution_mode: value.execution_mode,
+            preloaded_artifacts: value.preloaded_artifacts,
         }
     }
 }
@@ -212,6 +239,8 @@ impl RunResumeRequest {
             language: self.language,
             size: self.size,
             max_retries: self.max_retries,
+            execution_mode: self.execution_mode,
+            preloaded_artifacts: self.preloaded_artifacts,
         }
     }
 }
@@ -310,6 +339,9 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|_| "http://embedding:8090".into()),
         shacl_url: env::var("VERITAS_SHACL_URL")
             .unwrap_or_else(|_| "http://shacl:8080".into()),
+        math_tools_url: env::var("VERITAS_MATH_TOOLS_URL")
+            .unwrap_or_else(|_| "http://math-tools:8091".into()),
+        math_tools_timeout_secs: uint_env("VERITAS_MATH_TOOLS_TIMEOUT_SECS", 60) as u64,
         require_models: bool_env("VERITAS_REQUIRE_MODELS", true),
         planner_model: model_role("planner", "VERITAS_PLANNER", "http://vllm-planner:8000", "Qwen/Qwen2.5-Coder-7B-Instruct", "veritas-planner", 0.05, 0.9, 2200),
         code_model: model_role("code_generation", "VERITAS_CODE", "http://vllm-code:8000", "Qwen/Qwen2.5-Coder-14B-Instruct", "veritas-code", 0.02, 0.9, 7000),
@@ -323,7 +355,7 @@ async fn main() -> anyhow::Result<()> {
         remote_model_name,
         remote_model_api_key_env: remote_api_key_env,
         command_runner: env::var("VERITAS_COMMAND_RUNNER").unwrap_or_else(|_| "local".into()),
-        shacl_enforce: bool_env("VERITAS_SHACL_ENFORCE", false),
+        governance_mode: GovernanceMode::from_env(),
         human_loop_policy: env::var("VERITAS_HUMAN_LOOP_POLICY").unwrap_or_else(|_| "require_high_risk_only".into()),
         fuseki_data_url: env::var("VERITAS_FUSEKI_DATA_URL").unwrap_or_else(|_| "http://fuseki:3030/veritas/data".into()),
         graph_ontology_uri: env::var("VERITAS_GRAPH_ONTOLOGY_URI").unwrap_or_else(|_| "urn:veritas:graph:ontology".into()),
@@ -361,6 +393,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/journey/:run_id/resume", post(journey::resume))
         .route("/journey/:run_id/report", get(journey::report))
         .route("/evidence-registry/status", post(evidence_registry_status))
+        .route("/math-tools/status", get(math_tools_status))
+        .route("/math-tools/validate", post(math_tools_validate))
         .route("/plan", post(plan))
         .route("/run", post(run_agent))
         .route("/llm/chat", post(llm_chat))
@@ -413,13 +447,15 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let fuseki = probe(&state.http, &state.fuseki_ping_url, "fuseki").await;
     let embedding = probe(&state.http, &format!("{}/health", state.embedding_url.trim_end_matches('/')), "embedding").await;
     let shacl = probe(&state.http, &format!("{}/health", state.shacl_url.trim_end_matches('/')), "shacl").await;
+    let math_tools = probe(&state.http, &format!("{}/health", state.math_tools_url.trim_end_matches('/')), "math_tools").await;
     let planner = probe_model(&state.http, &state.planner_model).await;
     let code = probe_model(&state.http, &state.code_model).await;
     let math = probe_model(&state.http, &state.math_model).await;
     let base_ok = opensearch["ok"].as_bool().unwrap_or(false)
         && fuseki["ok"].as_bool().unwrap_or(false)
         && embedding["ok"].as_bool().unwrap_or(false)
-        && shacl["ok"].as_bool().unwrap_or(false);
+        && shacl["ok"].as_bool().unwrap_or(false)
+        && math_tools["ok"].as_bool().unwrap_or(false);
     let model_ok = planner["ok"].as_bool().unwrap_or(false)
         && code["ok"].as_bool().unwrap_or(false)
         && math["ok"].as_bool().unwrap_or(false);
@@ -436,6 +472,7 @@ async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "fuseki": fuseki,
                 "embedding": embedding,
                 "shacl": shacl,
+                "math_tools": math_tools,
                 "vllm_planner": planner,
                 "vllm_code": code,
                 "vllm_math": math
@@ -474,12 +511,13 @@ async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 "normalized": true,
                 "cosine_search": "OpenSearch FAISS/HNSW"
             },
-            "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet", "shacl": state.shacl_url},
+            "ontology_reasoning": {"graph": "Jena Fuseki SPARQL", "offline_reasoner": "Openllet", "shacl": state.shacl_url.clone()},
+            "tool_verified_math_engine": {"url": state.math_tools_url.clone(), "timeout_secs": state.math_tools_timeout_secs, "source_of_truth": "sympy_numpy_scipy_mpmath_hypothesis_service"},
             "provider_router": state.provider_router.summary(),
             "provider_route_history_tail": route_history.iter().rev().take(20).cloned().collect::<Vec<_>>(),
             "remote_fallback": {"enabled": state.remote_model_enabled, "base_url": state.remote_model_base_url, "model": state.remote_model_name, "api_key_env": state.remote_model_api_key_env},
             "execution": {"command_runner": state.command_runner, "sandbox_default": state.command_runner == "docker" || state.command_runner == "sandbox"},
-            "shacl": {"url": state.shacl_url, "enforce": state.shacl_enforce}
+            "shacl": {"url": state.shacl_url, "governance_mode": state.governance_mode.as_str(), "enforced": state.governance_mode.enforces(), "legacy_enforce_env_supported": true}
         })),
     )
 }
@@ -580,9 +618,32 @@ async fn cancel_run(State(state): State<Arc<AppState>>, AxumPath(path): AxumPath
     }
 }
 
-async fn read_json_file(path: &Path) -> Option<Value> {
+pub(crate) async fn read_json_file(path: &Path) -> Option<Value> {
     let text = fs::read_to_string(path).await.ok()?;
     serde_json::from_str(&text).ok()
+}
+
+async fn apply_preloaded_artifacts(workspace: &Path, artifacts: Option<&Value>) -> Result<(), ApiFailure> {
+    let Some(artifacts) = artifacts else { return Ok(()); };
+    if let Some(report) = artifacts.get("math_validation_report") {
+        write_json_file(&workspace.join("math_validation_report.json"), report).await?;
+    }
+    if let Some(model) = artifacts.get("representation_model") {
+        write_json_file(&workspace.join("representation_model.json"), model).await?;
+    }
+    if let Some(registry) = artifacts.get("evidence_registry") {
+        write_json_file(&workspace.join("evidence_registry.json"), registry).await?;
+    }
+    if let Some(manifest) = artifacts.get("evidence_manifest") {
+        write_json_file(&workspace.join("evidence_manifest.json"), manifest).await?;
+    }
+    if let Some(manifest) = artifacts.get("formula_manifest") {
+        write_json_file(&workspace.join("formula_manifest.json"), manifest).await?;
+    }
+    if let Some(manifest) = artifacts.get("citation_manifest") {
+        write_json_file(&workspace.join("citation_manifest.json"), manifest).await?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn read_events_tail(path: &Path, limit: usize) -> Result<Vec<Value>, std::io::Error> {
@@ -734,7 +795,13 @@ async fn plan(State(state): State<Arc<AppState>>, Json(input): Json<Value>) -> i
         Err(error) => return error.response(),
     };
     let size = input.get("size").and_then(Value::as_u64).unwrap_or(8).min(50) as u32;
-    match build_structured_plan(&state, &goal, size).await {
+    let workspace_path = input.get("workspace")
+        .or_else(|| input.get("workspace_path"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    match build_structured_plan(&state, &goal, size, workspace_path.as_deref(), Some(&input)).await {
         Ok(plan) => (StatusCode::OK, Json(plan)),
         Err(error) => error.response(),
     }
@@ -1058,6 +1125,25 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
         Ok(value) => value,
         Err(error) => return error.response(),
     };
+    let tool_verified_math = match math_tools::validate_formula_context(&state, &formula_context).await {
+        Ok(value) => value,
+        Err(error) => return error.response(),
+    };
+    if !tool_verified_math.get("ok").and_then(Value::as_bool).unwrap_or(false) && !eligibility.exploratory_unverified {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "ok": false,
+                "state": "blocked_by_math_tools",
+                "status": "blocked_by_math_tools",
+                "message": "Tool-Verified Math Engine rejected the formula before code generation.",
+                "math_validation_report": tool_verified_math,
+                "files_written": [],
+                "commands_run": [],
+                "next_action": "Fix the formula, assumptions, or evidence registry before retrying formula-to-code."
+            })),
+        );
+    }
     let checkpoint = math_human_checkpoint(&state, &math_reasoning, &formula_context, req.human_decision.clone());
     if let Err(error) = validate_model_json(SchemaKey::HumanCheckpoint, &checkpoint) {
         return error.response();
@@ -1082,11 +1168,31 @@ async fn math_to_code(State(state): State<Arc<AppState>>, Json(req): Json<MathTo
         math_reasoning,
         checkpoint,
     );
-    let run_req = RunRequest { goal, language: Some(language), size: Some(8), max_retries: req.max_retries };
+    let run_req = RunRequest {
+        goal,
+        language: Some(language),
+        size: Some(8),
+        max_retries: req.max_retries,
+        execution_mode: Some("production".to_string()),
+        preloaded_artifacts: Some(json!({
+            "math_validation_report": tool_verified_math,
+            "representation_model": {
+                "kind": "VeritasRepresentationModel",
+                "status": "approved",
+                "surface_phenomenon": math_reasoning.get("surface_phenomenon").cloned().unwrap_or_else(|| json!("formula-to-code request")),
+                "representation_map": math_reasoning.get("candidate_representation_map").or_else(|| math_reasoning.get("representation_map")).cloned().unwrap_or_else(|| json!({"type":"formula_context_to_implementation_spec"})),
+                "invariants": math_reasoning.get("invariants").cloned().unwrap_or_else(|| json!([])),
+                "symbolic_shadows": math_reasoning.get("symbolic_shadows").cloned().unwrap_or_else(|| json!([formula_context.get("formula_latex").cloned().unwrap_or_else(|| json!(""))])),
+                "validation_obligations": math_reasoning.get("validation_requirements").or_else(|| math_reasoning.get("validation_obligations")).cloned().unwrap_or_else(|| json!(["tool_verified_math_engine", "compile_and_test"])),
+                "tool_verified_math_report_path": "math_validation_report.json"
+            })
+        })),
+    };
     match execute_autonomous_run(&state, run_req).await {
         Ok(mut report) => {
             report["kind"] = json!("VeritasMathToCodeRunReport");
             report["math_reasoning"] = math_reasoning;
+            report["tool_verified_math"] = tool_verified_math;
             report["human_checkpoint"] = checkpoint;
             report["evidence_eligibility"] = formula_context.get("evidence_eligibility").cloned().unwrap_or_else(|| json!({}));
             if eligibility.exploratory_unverified {
@@ -1157,6 +1263,37 @@ fn math_human_checkpoint(state: &AppState, math_reasoning: &Value, formula_conte
 }
 
 
+
+
+async fn math_tools_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match math_tools::status(&state).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => error.response(),
+    }
+}
+
+async fn math_tools_validate(State(state): State<Arc<AppState>>, Json(req): Json<MathToolsValidateRequest>) -> impl IntoResponse {
+    if let Some(workspace) = req.workspace.as_ref() {
+        let path = PathBuf::from(workspace);
+        let goal = req.goal.clone().unwrap_or_else(|| "math validation".to_string());
+        let plan = read_json_file(&path.join("plan.json")).await.unwrap_or_else(|| json!({}));
+        return match math_tools::validate_workspace_if_required(&state, &path, &goal, &plan).await {
+            Ok(Some(value)) => Json(value).into_response(),
+            Ok(None) => Json(json!({"ok": true, "status": "not_applicable_non_math_run", "workspace": workspace})).into_response(),
+            Err(error) => error.response(),
+        };
+    }
+    let formula_context = json!({
+        "formula_id": req.formula_id,
+        "formula_latex": req.formula_latex,
+        "assumptions": req.assumptions.unwrap_or_default(),
+        "variables": req.variables.unwrap_or_default(),
+    });
+    match math_tools::validate_formula_context(&state, &formula_context).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => error.response(),
+    }
+}
 
 async fn human_checkpoint(State(state): State<Arc<AppState>>, Json(req): Json<HumanCheckpointRequest>) -> impl IntoResponse {
     let decision = req.decision.trim().to_ascii_lowercase();
@@ -1313,40 +1450,61 @@ fn production_opensearch_mapping(vector_field: &str, dimension: usize, version: 
     })
 }
 
-async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Result<Value, ApiFailure> {
-    let evidence = retrieve_evidence(state, goal, size, Some("hybrid")).await?;
-    let hits = evidence.pointer("/hits/hits").and_then(Value::as_array).cloned().unwrap_or_default();
-    if hits.is_empty() && !bool_env("VERITAS_ALLOW_EMPTY_EVIDENCE", false) {
-        return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "plan.no_evidence", "No OpenSearch evidence hits were found for the prompt.", "Ingest arXiv papers or local PDFs first, then retry. Use `veritas search <query>` to verify retrieval."));
-    }
+async fn build_structured_plan(state: &AppState, goal: &str, size: u32, workspace: Option<&Path>, request_context: Option<&Value>) -> Result<Value, ApiFailure> {
+    let search_attempt = retrieve_evidence(state, goal, size, Some("hybrid")).await;
+    let (raw_evidence, opensearch_error) = match search_attempt {
+        Ok(value) => (value, None),
+        Err(error) => {
+            let details = json!({"code": error.code, "message": error.message, "remediation": error.remediation, "details": error.details});
+            (json!({"hits": {"hits": []}, "veritas_search_error": details.clone()}), Some(details))
+        }
+    };
+    let evidence = compact_search_evidence(&raw_evidence);
     let formula_trace = run_formula_trace_query(state).await.unwrap_or_else(|error| {
         json!({"ok": false, "warning": {"code": error.code, "message": error.message, "remediation": error.remediation}})
     });
     let ontology_facts = planner_fact_summary(state).await;
-    let system = r#"You are the Veritas autonomous planner. You must return valid JSON only. No markdown. No prose outside JSON. Produce an evidence-backed plan using the provided retrieved evidence and ontology facts. Follow representation-first mathematical research: surface phenomenon, symbolic shadow, invariant, risk, plan, tasks, validation, build artifact. Do not claim production readiness until compile/test validation passes."#;
+    let planning_context = planning_context::build(planning_context::PlanningContextInput {
+        workspace,
+        goal,
+        size,
+        opensearch_evidence: &evidence,
+        opensearch_error,
+        formula_trace: &formula_trace,
+        ontology_facts: &ontology_facts,
+        request_context,
+    }).await?;
+    planning_context::write_context(workspace, &planning_context).await?;
+    let system = r#"You are the Veritas autonomous planner. You must return valid JSON only. No markdown. No prose outside JSON. Produce an evidence-backed plan using only the approved ids in planning_context. Follow representation-first mathematical research: surface phenomenon, symbolic shadow, invariant, risk, plan, tasks, validation, build artifact. Do not claim production readiness until compile/test validation passes."#;
     let user = json!({
         "goal": goal,
         "required_json_schema": schema_description_for(SchemaKey::Planner),
         "available_tools": ["retrieval", "sparql", "shacl_validate", "math_reasoning", "code_generation", "local_command", "test_runner"],
-        "opensearch_evidence": compact_search_evidence(&evidence),
+        "planning_context": planning_context,
+        "planner_lineage_contract": planning_context::planner_prompt_contract(&planning_context),
+        "opensearch_evidence": evidence,
         "sparql_formula_trace": formula_trace,
         "ontology_planner_fact_summary": ontology_facts,
         "hard_requirements": [
             "Return JSON only.",
-            "Every step must have id, tool, description, input, and success_criteria.",
+            "Every step must have id, tool, description, input, success_criteria, evidence_ids, citation_ids, formula_ids, risk_ids, validation_gate_ids, and human_checkpoint_ids.",
+            "Every step must cite only approved evidence/citation/formula identifiers from planning_context; do not invent identifiers.",
+            "Planning without approved evidence is forbidden for production-bound runs.",
             "Include code_generation and test_runner steps.",
             "Include risks and validation gates."
         ]
     }).to_string();
     let plan = call_chat_model_json(state, &state.planner_model, SchemaKey::Planner, system, &user).await?;
     validate_plan_schema(&plan)?;
+    planning_context::validate_plan_references(&plan, &planning_context)?;
     Ok(json!({
         "ok": true,
         "kind": "VeritasStructuredPlan",
-        "status": "validated_structured_plan",
+        "status": "validated_evidence_grounded_structured_plan",
         "goal": goal,
         "model_route": {"planner": role_json(&state.planner_model), "code": role_json(&state.code_model), "math": role_json(&state.math_model)},
-        "evidence": {"opensearch_faiss_hnsw": compact_search_evidence(&evidence), "jena_fuseki_formula_trace": formula_trace, "jena_fuseki_planner_fact_summary": ontology_facts},
+        "planning_context": planning_context.clone(),
+        "evidence": {"approved_planning_context": planning_context.clone(), "opensearch_faiss_hnsw": evidence, "jena_fuseki_formula_trace": formula_trace, "jena_fuseki_planner_fact_summary": ontology_facts},
         "plan": plan
     }))
 }
@@ -1354,11 +1512,11 @@ async fn build_structured_plan(state: &AppState, goal: &str, size: u32) -> Resul
 fn plan_schema_description() -> Value {
     json!({
         "objective": {"summary": "string", "desired_outcome": "string"},
-        "steps": [{"id": "string", "tool": "retrieval|sparql|math_reasoning|code_generation|local_command|test_runner", "description": "string", "input": {}, "success_criteria": ["string"]}],
+        "steps": [{"id": "string", "tool": "retrieval|sparql|math_reasoning|code_generation|local_command|test_runner", "description": "string", "input": {}, "success_criteria": ["string"], "evidence_ids": ["evidence id"], "citation_ids": ["citation id"], "formula_ids": ["formula id"], "validation_gate_ids": ["validation gate id"], "human_checkpoint_ids": ["plan_review"]}],
         "files_to_generate": [{"path": "relative/path", "purpose": "string"}],
         "commands_to_run": [{"command": "string", "purpose": "string"}],
         "risks": [{"risk": "string", "mitigation": "string"}],
-        "validation_gates": [{"check": "string", "command": "optional string"}]
+        "validation_gates": [{"id": "validation gate id", "check": "string", "command": "optional string"}]
     })
 }
 
@@ -1542,17 +1700,26 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
 
     let language = req.language.clone().unwrap_or_else(|| "rust".to_string());
     let max_retries = req.max_retries.unwrap_or(state.max_retries).min(5);
+    apply_preloaded_artifacts(&workspace, req.preloaded_artifacts.as_ref()).await?;
     let plan_envelope_path = workspace.join("plan_envelope.json");
     let plan_envelope = if resume && plan_envelope_path.exists() {
         read_json_file(&plan_envelope_path).await.ok_or_else(|| ApiFailure::new(StatusCode::CONFLICT, "run.resume.plan_unreadable", "The persisted plan_envelope.json could not be read.", "Inspect or delete the corrupted plan file before resuming."))?
     } else {
-        let envelope = build_structured_plan(state, &req.goal, req.size.unwrap_or(8)).await?;
+        let run_planning_context = json!({
+            "execution_mode": req.execution_mode.clone().unwrap_or_else(|| "production".to_string()),
+            "preloaded_artifacts_present": req.preloaded_artifacts.is_some()
+        });
+        let envelope = build_structured_plan(state, &req.goal, req.size.unwrap_or(8), Some(&workspace), Some(&run_planning_context)).await?;
         write_json_file(&plan_envelope_path, &envelope).await?;
-        persist_run_state(&workspace, "Planned", json!({"plan_envelope_path": plan_envelope_path.display().to_string(), "resumed": resume})).await?;
+        persist_run_state(&workspace, "Planned", json!({"plan_envelope_path": plan_envelope_path.display().to_string(), "planning_context_path": "planning_context.json", "resumed": resume})).await?;
         envelope
     };
     let plan = plan_envelope.get("plan").cloned().unwrap_or_else(|| json!({}));
     write_json_file(&workspace.join("plan.json"), &plan).await?;
+    let lineage_context = lineage::build_lineage_context(&workspace, &plan_envelope, &plan).await?;
+    lineage::write_planning_context(&workspace, &lineage_context).await?;
+    lineage::validate_plan_lineage(&plan, &lineage_context)?;
+    persist_run_state(&workspace, "LineageContextReady", json!({"planning_context": "planning_context.json"})).await?;
 
     let mut tool_calls: Vec<Value> = read_json_file(&workspace.join("tool_calls.json")).await.and_then(|v| v.as_array().cloned()).unwrap_or_default();
     let tool_outputs_path = workspace.join("tool_outputs.json");
@@ -1574,6 +1741,10 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         persist_run_state(&workspace, "ShaclValidated", json!({"automatic_shacl_path": automatic_shacl_path.display().to_string(), "resumed": resume})).await?;
         report
     };
+
+    if let Some(math_report) = math_tools::validate_workspace_if_required(state, &workspace, &req.goal, &plan).await? {
+        persist_run_state(&workspace, "MathToolsValidated", json!({"math_validation_report": "math_validation_report.json", "ok": math_report.get("ok").and_then(Value::as_bool).unwrap_or(false)})).await?;
+    }
 
     let pre_codegen_gates = match gates::run_pre_codegen_gates(state, &workspace, &run_id, &req.goal, &plan, &automatic_shacl).await {
         Ok(report) => {
@@ -1606,11 +1777,14 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
             break;
         }
         attempts_performed = attempt + 1;
-        let code_prompt = build_code_generation_prompt(&req.goal, &language, &plan, &plan_envelope["evidence"], &tool_outputs, &last_error_summary, attempt);
+        let code_prompt = build_code_generation_prompt(&req.goal, &language, &plan, &plan_envelope["evidence"], &tool_outputs, &lineage_context, &last_error_summary, attempt);
         let generated = call_chat_model_json(state, &state.code_model, SchemaKey::Codegen, codegen_system_prompt(), &code_prompt).await?;
         validate_codegen_schema(&generated)?;
-        persist_run_state(&workspace, "GeneratingCode", json!({"attempt": attempt, "resumed": resume})).await?;
+        lineage::validate_codegen_lineage_for_plan(&plan, &lineage_context, &generated)?;
+        persist_run_state(&workspace, "GeneratingCode", json!({"attempt": attempt, "resumed": resume, "lineage_validated": true})).await?;
         write_json_file(&workspace.join(format!("code_package_attempt_{attempt}.json")), &generated).await?;
+        let file_lineage = lineage::write_file_lineage(&workspace, &generated).await?;
+        write_json_file(&workspace.join(format!("file_lineage_attempt_{attempt}.json")), &file_lineage).await?;
         write_generated_files(&workspace, &generated, &mut files_changed).await?;
         code_package = generated.clone();
         write_json_file(&workspace.join("code_package_latest.json"), &code_package).await?;
@@ -1654,21 +1828,59 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         write_json_file(&workspace.join("retry_history.json"), &json!(retry_history)).await?;
     }
 
+    let final_shacl_report = run_shacl_gate(state, &workspace, &plan, "final_artifact_shacl").await?;
+    write_json_file(&workspace.join("final_artifact_shacl_report.json"), &final_shacl_report).await?;
+    if state.governance_mode.enforces() && !shacl_report_conforms(&final_shacl_report) {
+        final_status = "blocked_by_governance".to_string();
+        persist_run_state(&workspace, "FinalShaclBlocked", json!({"final_artifact_shacl_report": "final_artifact_shacl_report.json"})).await?;
+    }
+
     let provider_route_history = state.provider_router.history_snapshot().await;
     let human_checkpoints = read_events_tail(&workspace.join("human_checkpoints.jsonl"), 500).await.unwrap_or_default();
     let human_checkpoint_gate = human_checkpoint_gate_summary(&workspace, &state.human_loop_policy).await;
+    let artifact_decision = artifact_decision::decide_completed_run(
+        state,
+        &workspace,
+        &run_id,
+        &final_status,
+        &pre_codegen_gates,
+        &final_shacl_report,
+        &human_checkpoint_gate,
+        &validation_results,
+        &retry_history,
+        &commands_run,
+        &files_changed,
+        workspace.join("CANCELLED").exists(),
+    ).await?;
+    let artifact_status = artifact_decision.get("artifact_status").and_then(Value::as_str).unwrap_or("failed").to_string();
+    let remaining_limitations = artifact_decision.get("remaining_limitations").cloned().unwrap_or_else(|| json!([]));
+    let report_lineage = lineage::build_report_lineage(&workspace, &plan_envelope, &plan, &code_package, &commands_run, &validation_results, &retry_history, &artifact_decision).await?;
     let mut report = json!({
-        "ok": final_status == "production_candidate_validated" && human_checkpoint_gate.get("production_status_allowed").and_then(Value::as_bool).unwrap_or(true),
+        "ok": artifact_decision.get("ok").and_then(Value::as_bool).unwrap_or(false),
         "kind": "VeritasAutonomousRunReport",
         "run_id": run_id,
         "workspace": workspace.display().to_string(),
         "original_task": req.goal,
+        "source_documents": report_lineage.get("source_documents").cloned().unwrap_or_else(|| json!([])),
+        "citations": report_lineage.get("citations").cloned().unwrap_or_else(|| json!([])),
+        "formulas": report_lineage.get("formulas").cloned().unwrap_or_else(|| json!([])),
+        "review_decisions": report_lineage.get("review_decisions").cloned().unwrap_or_else(|| json!({})),
+        "representation_model": report_lineage.get("representation_model").cloned().unwrap_or_else(|| json!(null)),
+        "planning_context": report_lineage.get("planning_context").cloned().unwrap_or_else(|| json!({})),
+        "plan_lineage": report_lineage.get("plan_lineage").cloned().unwrap_or_else(|| json!({})),
+        "file_lineage": report_lineage.get("file_lineage").cloned().unwrap_or_else(|| json!({"files": []})),
+        "command_lineage": report_lineage.get("command_lineage").cloned().unwrap_or_else(|| json!({})),
+        "validation_lineage": report_lineage.get("validation_lineage").cloned().unwrap_or_else(|| json!({})),
+        "repair_lineage": report_lineage.get("repair_lineage").cloned().unwrap_or_else(|| json!([])),
+        "governance_lineage": report_lineage.get("governance_lineage").cloned().unwrap_or_else(|| json!({})),
         "language": language,
         "generated_plan": plan,
         "model_routes_used": {"planner": role_json(&state.planner_model), "code": role_json(&state.code_model), "math": role_json(&state.math_model)},
         "provider_route_history": provider_route_history,
         "tool_calls_performed": tool_calls,
         "automatic_shacl": automatic_shacl,
+        "final_shacl": final_shacl_report,
+        "governance_mode": state.governance_mode.as_str(),
         "pre_codegen_gates": pre_codegen_gates,
         "human_checkpoint_policy": state.human_loop_policy.clone(),
         "human_checkpoints": human_checkpoints,
@@ -1679,17 +1891,19 @@ async fn execute_autonomous_run_core(state: &AppState, run_id: String, workspace
         "attempts_performed": attempts_performed,
         "retries_performed": retry_history.len(),
         "retry_history": retry_history,
-        "generated_package_status": final_status,
-        "final_status": final_status,
+        "generated_package_status": artifact_status.clone(),
+        "artifact_status": artifact_status.clone(),
+        "artifact_decision": artifact_decision,
+        "final_status": artifact_status,
         "resumed": resume,
-        "remaining_limitations": if final_status == "production_candidate_validated" { json!([]) } else { json!(["Generated code did not pass compile/test validation within the configured retry limit, or the run was cancelled."]) },
+        "remaining_limitations": remaining_limitations,
         "code_model_output": code_package,
     });
     let graph_upload = upload_run_report_to_fuseki(state, &run_id, &report).await.unwrap_or_else(|error| json!({"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}));
     report["fuseki_run_graph_upload"] = graph_upload;
     validate_model_json(SchemaKey::RunReport, &report)?;
     write_json_file(&workspace.join("final_report.json"), &report).await?;
-    persist_run_state(&workspace, "FinalReportWritten", json!({"final_status": report.get("final_status"), "report": "final_report.json"})).await?;
+    persist_run_state(&workspace, "FinalReportWritten", json!({"final_status": report.get("final_status"), "artifact_decision": "artifact_decision.json", "report": "final_report.json"})).await?;
     Ok(report)
 }
 
@@ -1735,7 +1949,7 @@ async fn execute_planner_selected_tools(state: &AppState, plan: &Value, goal: &s
     json!(outputs)
 }
 
-fn build_code_generation_prompt(goal: &str, language: &str, plan: &Value, evidence: &Value, tool_outputs: &Value, last_error_summary: &str, attempt: usize) -> String {
+fn build_code_generation_prompt(goal: &str, language: &str, plan: &Value, evidence: &Value, tool_outputs: &Value, lineage_context: &Value, last_error_summary: &str, attempt: usize) -> String {
     json!({
         "goal": goal,
         "language": language,
@@ -1743,6 +1957,8 @@ fn build_code_generation_prompt(goal: &str, language: &str, plan: &Value, eviden
         "plan": plan,
         "evidence": evidence,
         "tool_outputs": tool_outputs,
+        "lineage_context": lineage_context,
+        "lineage_contract": lineage::codegen_lineage_contract(plan, lineage_context),
         "previous_failure_summary": last_error_summary,
         "functional_programming_policy": {
             "referential_transparency": true,
@@ -1756,8 +1972,8 @@ fn build_code_generation_prompt(goal: &str, language: &str, plan: &Value, eviden
         "required_json_schema": {
             "package_name": "snake_case string",
             "language": language,
-            "files": [{"path": "relative/path", "content": "complete file content"}],
-            "commands": [{"command": "shell command to compile/test in workspace", "purpose": "why this validates the output"}],
+            "files": [{"path": "relative/path", "content": "complete file content", "purpose": "why this file exists", "derived_from_plan_step_ids": ["plan step id"], "derived_from_evidence_ids": ["evidence id"], "derived_from_citation_ids": ["citation id"], "derived_from_formula_ids": ["formula id"], "required_validation_ids": ["validation gate id"]}],
+            "commands": [{"command": "shell command to compile/test in workspace", "purpose": "why this validates the output", "derived_from_plan_step_ids": ["plan step id"], "required_validation_ids": ["validation gate id"]}],
             "assumptions": ["string"],
             "validation_summary": "string"
         },
@@ -1766,7 +1982,10 @@ fn build_code_generation_prompt(goal: &str, language: &str, plan: &Value, eviden
             "Generate complete files, not snippets.",
             "For Rust, include Cargo.toml, src/lib.rs, and at least one test.",
             "Commands must compile and run tests.",
-            "Do not claim GPU support unless actual GPU code is generated and tested. Prefer CPU-safe implementation with explicit extension points."
+            "Every generated file and command must include lineage ids from lineage_contract; the application rejects unknown or empty ids before writing files.",
+            "Do not claim GPU support unless actual GPU code is generated and tested. Prefer CPU-safe implementation with explicit extension points.",
+            "Every generated file must include derived_from_plan_step_ids, derived_from_evidence_ids, derived_from_citation_ids, derived_from_formula_ids, and required_validation_ids from lineage_contract.",
+            "Every validation command must include derived_from_plan_step_ids and required_validation_ids from lineage_contract."
         ]
     }).to_string()
 }
@@ -1787,9 +2006,38 @@ fn validate_codegen_schema(output: &Value) -> Result<(), ApiFailure> {
                     if !generated_path_is_safe(path) { errors.push(format!("unsafe generated file path: {path}")); }
                 }
                 if item.get("content").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("each file needs non-empty content"); }
+                for field in ["purpose", "derived_from_plan_step_ids", "derived_from_evidence_ids", "derived_from_citation_ids", "derived_from_formula_ids", "required_validation_ids"] {
+                    match item.get(field) {
+                        Some(Value::String(s)) if field == "purpose" && !s.trim().is_empty() => {}
+                        Some(Value::Array(items)) if field != "purpose" && items.iter().all(|v| v.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false)) => {}
+                        _ => errors.push(format!("each file needs valid {field}")),
+                    }
+                }
             }
         }
         _ => errors.push("files must be a non-empty array"),
+    }
+    match output.get("commands").and_then(Value::as_array) {
+        Some(commands) => {
+            for command in commands {
+                if command.get("command").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("each command needs a non-empty command"); }
+                if command.get("purpose").and_then(Value::as_str).map(|s| s.trim().is_empty()).unwrap_or(true) { errors.push("each command needs a non-empty purpose"); }
+                for field in ["derived_from_plan_step_ids", "required_validation_ids"] {
+                    match command.get(field) {
+                        Some(Value::Array(items)) if items.iter().all(|v| v.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false)) => {}
+                        _ => errors.push(format!("each command needs valid {field}")),
+                    }
+                }
+            }
+        }
+        None => errors.push("commands must be an array"),
+    }
+    if let Some(commands) = output.get("commands").and_then(Value::as_array) {
+        for command in commands {
+            for lineage_field in ["purpose", "derived_from_plan_step_ids", "required_validation_ids"] {
+                if command.get(lineage_field).is_none() { errors.push(format!("each command needs {lineage_field} for validation lineage")); }
+            }
+        }
     }
     if errors.is_empty() { Ok(()) } else { Err(ApiFailure::new(StatusCode::BAD_GATEWAY, "codegen.schema_invalid", "Code model returned JSON that failed the Veritas codegen schema.", "Use a stronger code model or reduce temperature; inspect model output in the error details.").with_details(json!({"errors": errors, "output": output}))) }
 }
@@ -2122,41 +2370,80 @@ async fn call_chat_model_raw(state: &AppState, role: &ModelRole, system: &str, u
 }
 
 async fn automatic_shacl_gate(state: &AppState, workspace: &Path, plan: &Value) -> Result<Value, ApiFailure> {
-    let (data_ttl, graph_context) = collect_shacl_data_ttl(state, plan).await;
+    run_shacl_gate(state, workspace, plan, "pre_codegen_shacl").await
+}
+
+async fn run_shacl_gate(state: &AppState, workspace: &Path, plan: &Value, stage: &str) -> Result<Value, ApiFailure> {
+    let (data_ttl, graph_context) = collect_shacl_data_ttl(state, workspace, plan).await;
     let shapes_ttl = default_shacl_shapes();
-    let data_path = workspace.join("automatic_shacl_data.ttl");
-    let shapes_path = workspace.join("automatic_shacl_shapes.ttl");
+    let slug = safe_iri_segment(stage);
+    let data_path = workspace.join(format!("{slug}_shacl_data.ttl"));
+    let shapes_path = workspace.join(format!("{slug}_shacl_shapes.ttl"));
+    let report_path = workspace.join(if stage == "pre_codegen_shacl" { "automatic_shacl_report.json".to_string() } else { format!("{slug}_report.json") });
+    let findings_path = workspace.join(if stage == "pre_codegen_shacl" { "automatic_shacl_findings.ttl".to_string() } else { format!("{slug}_findings.ttl") });
     let _ = fs::write(&data_path, &data_ttl).await;
     let _ = fs::write(&shapes_path, &shapes_ttl).await;
+
+    if state.governance_mode.disabled() {
+        let report = json!({
+            "ok": true,
+            "stage": stage,
+            "governance_mode": state.governance_mode.as_str(),
+            "enforced": false,
+            "disabled": true,
+            "conforms": true,
+            "report_path": report_path.display().to_string(),
+            "data_path": data_path.display().to_string(),
+            "shapes_path": shapes_path.display().to_string(),
+            "findings_path": findings_path.display().to_string(),
+            "graph_context": graph_context,
+            "message": "SHACL governance is disabled for this run. This mode cannot produce production_validated status."
+        });
+        let _ = fs::write(&report_path, serde_json::to_string_pretty(&report).unwrap_or_else(|_| report.to_string())).await;
+        return Ok(report);
+    }
+
     let result = run_shacl_validation(state, &data_ttl, &shapes_ttl).await;
-    match result {
+    let report = match result {
         Ok(value) => {
             let conforms = value.get("conforms").and_then(Value::as_bool).unwrap_or(true);
-            let path = workspace.join("automatic_shacl_report.json");
-            let findings_ttl = shacl_findings_to_turtle(workspace.file_name().and_then(|v| v.to_str()).unwrap_or("automatic"), &value);
-            let findings_path = workspace.join("automatic_shacl_findings.ttl");
-            let _ = fs::write(&path, serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())).await;
-            let _ = fs::write(&findings_path, &findings_ttl).await;
-            if state.shacl_enforce && !conforms {
-                return Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.gate_failed", "Automatic SHACL validation failed before code generation.", "Review automatic_shacl_report.json and automatic_shacl_findings.ttl, fix missing ontology obligations, or run with VERITAS_SHACL_ENFORCE=false for exploratory work only.").with_details(value));
-            }
-            Ok(json!({
-                "ok": true,
-                "enforced": state.shacl_enforce,
+            let ok = conforms;
+            json!({
+                "ok": ok,
+                "stage": stage,
+                "governance_mode": state.governance_mode.as_str(),
+                "enforced": state.governance_mode.enforces(),
                 "conforms": conforms,
-                "report_path": path.display().to_string(),
+                "blocking": state.governance_mode.enforces() && !ok,
+                "status": if ok { "shacl_conforms" } else if state.governance_mode.enforces() { "blocked_by_governance" } else { "advisory_shacl_nonconformance" },
+                "report_path": report_path.display().to_string(),
                 "data_path": data_path.display().to_string(),
                 "shapes_path": shapes_path.display().to_string(),
                 "findings_path": findings_path.display().to_string(),
                 "graph_context": graph_context,
                 "result": value
-            }))
+            })
         }
-        Err(error) => {
-            let warning = json!({"ok": false, "enforced": state.shacl_enforce, "graph_context": graph_context, "error": {"code": error.code, "message": error.message, "remediation": error.remediation}});
-            if state.shacl_enforce { Err(ApiFailure::new(StatusCode::FAILED_DEPENDENCY, "shacl.unavailable", "SHACL validation is enforced but the SHACL service failed.", "Start the SHACL service or set VERITAS_SHACL_ENFORCE=false only for exploratory runs.").with_details(warning)) } else { Ok(warning) }
-        }
-    }
+        Err(error) => json!({
+            "ok": false,
+            "stage": stage,
+            "governance_mode": state.governance_mode.as_str(),
+            "enforced": state.governance_mode.enforces(),
+            "conforms": false,
+            "blocking": state.governance_mode.enforces(),
+            "status": if state.governance_mode.enforces() { "blocked_by_governance" } else { "advisory_shacl_unavailable" },
+            "report_path": report_path.display().to_string(),
+            "data_path": data_path.display().to_string(),
+            "shapes_path": shapes_path.display().to_string(),
+            "findings_path": findings_path.display().to_string(),
+            "graph_context": graph_context,
+            "error": {"code": error.code, "message": error.message, "remediation": error.remediation}
+        })
+    };
+    let findings_ttl = shacl_findings_to_turtle(workspace.file_name().and_then(|v| v.to_str()).unwrap_or("automatic"), &report);
+    let _ = fs::write(&report_path, serde_json::to_string_pretty(&report).unwrap_or_else(|_| report.to_string())).await;
+    let _ = fs::write(&findings_path, &findings_ttl).await;
+    Ok(report)
 }
 
 fn plan_to_turtle(plan: &Value) -> String {
@@ -2224,18 +2511,260 @@ async fn fetch_shacl_graph_context_ttl(state: &AppState) -> Result<String, ApiFa
     Ok(text)
 }
 
-async fn collect_shacl_data_ttl(state: &AppState, plan: &Value) -> (String, Value) {
-    let mut data_ttl = plan_to_turtle(plan);
+fn configured_shacl_artifact_files() -> Vec<String> {
+    let configured = env::var("VERITAS_SHACL_ARTIFACT_FILES").unwrap_or_default();
+    if configured.trim().is_empty() {
+        return [
+            "evidence_manifest.json",
+            "formula_manifest.json",
+            "citation_manifest.json",
+            "evidence_registry.json",
+            "evidence_eligibility.json",
+            "review_queue.json",
+            "representation_model.json",
+            "planning_context.json",
+            "plan.json",
+            "code_package_latest.json",
+            "validation_results.json",
+            "human_checkpoints.jsonl",
+            "math_validation_report.json",
+            "math_tool_results.jsonl",
+            "gate_decisions.jsonl",
+        ].iter().map(|item| item.to_string()).collect();
+    }
+    configured
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+async fn collect_artifact_bundle_ttl(workspace: &Path, plan: &Value) -> (String, Value) {
+    let run = safe_iri_segment(workspace.file_name().and_then(|v| v.to_str()).unwrap_or("run"));
+    let mut ttl = String::from("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n@prefix dcterms: <http://purl.org/dc/terms/> .\n");
+    ttl.push_str(&format!("<urn:veritas:run:{run}> a veritas:PlannedEngineeringAct ; veritas:hasIdentifier \"{}\" .\n", turtle_escape(&run)));
+    ttl.push_str("\n# Planner-generated plan obligations.\n");
+    ttl.push_str(&plan_to_turtle(plan));
+    ttl.push_str("\n# Workspace artifact bundle obligations.\n");
+
+    let mut artifacts = Vec::new();
+    for file_name in configured_shacl_artifact_files() {
+        let path = workspace.join(&file_name);
+        if !path.exists() {
+            artifacts.push(json!({"path": file_name, "present": false}));
+            continue;
+        }
+        let content = match fs::read_to_string(&path).await {
+            Ok(text) => text,
+            Err(error) => {
+                artifacts.push(json!({"path": file_name, "present": true, "readable": false, "error": error.to_string()}));
+                continue;
+            }
+        };
+        let artifact_id = safe_iri_segment(&file_name);
+        ttl.push_str(&format!("<urn:veritas:artifact:{run}:{artifact_id}> a veritas:EvidenceArtifact ; veritas:derivedFrom <urn:veritas:run:{run}> ; veritas:hasIdentifier \"{}\" ; veritas:hasStatus \"present\" .\n", turtle_escape(&file_name)));
+        let mut parsed_records = 0usize;
+        if file_name.ends_with(".jsonl") {
+            for (idx, line) in content.lines().enumerate() {
+                let line = line.trim();
+                if line.is_empty() { continue; }
+                if let Ok(value) = serde_json::from_str::<Value>(line) {
+                    parsed_records += 1;
+                    append_known_artifact_value_ttl(&mut ttl, &run, &file_name, &value, idx, workspace);
+                }
+            }
+        } else if let Ok(value) = serde_json::from_str::<Value>(&content) {
+            parsed_records = 1;
+            append_known_artifact_value_ttl(&mut ttl, &run, &file_name, &value, 0, workspace);
+        }
+        artifacts.push(json!({"path": file_name, "present": true, "readable": true, "bytes": content.len(), "records": parsed_records}));
+    }
+    (ttl, json!({"ok": true, "source": "workspace_artifact_bundle", "files": artifacts}))
+}
+
+fn append_known_artifact_value_ttl(ttl: &mut String, run: &str, file_name: &str, value: &Value, record_idx: usize, workspace: &Path) {
+    match file_name {
+        name if name.contains("formula") || name == "evidence_registry.json" || name == "evidence_eligibility.json" => append_formula_records_ttl(ttl, run, file_name, value),
+        name if name.contains("citation") => append_citation_records_ttl(ttl, run, file_name, value),
+        "evidence_manifest.json" => append_evidence_manifest_ttl(ttl, run, value),
+        "representation_model.json" => append_representation_model_ttl(ttl, run, value),
+        "planning_context.json" => append_planning_context_ttl(ttl, run, value),
+        "code_package_latest.json" => append_code_package_ttl(ttl, run, value, workspace),
+        "validation_results.json" => append_validation_results_ttl(ttl, run, value),
+        "math_validation_report.json" => append_math_validation_report_ttl(ttl, run, value),
+        "human_checkpoints.jsonl" | "gate_decisions.jsonl" | "math_tool_results.jsonl" => append_jsonl_record_ttl(ttl, run, file_name, value, record_idx),
+        _ => {}
+    }
+}
+
+fn collect_json_records(value: &Value, keys: &[&str]) -> Vec<Value> {
+    if let Some(items) = value.as_array() {
+        return items.clone();
+    }
+    for key in keys {
+        if let Some(items) = value.get(*key).and_then(Value::as_array) {
+            return items.clone();
+        }
+    }
+    Vec::new()
+}
+
+fn json_str<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    for key in keys {
+        if let Some(text) = value.get(*key).and_then(Value::as_str) {
+            if !text.trim().is_empty() { return Some(text); }
+        }
+    }
+    None
+}
+
+fn json_f64_string(value: &Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(num) = value.get(*key).and_then(Value::as_f64) {
+            return Some(format!("{num}"));
+        }
+        if let Some(text) = value.get(*key).and_then(Value::as_str) {
+            if text.parse::<f64>().is_ok() { return Some(text.to_string()); }
+        }
+    }
+    None
+}
+
+fn append_formula_records_ttl(ttl: &mut String, run: &str, file_name: &str, value: &Value) {
+    let mut records = collect_json_records(value, &["records", "formulas", "eligible_formulas", "blocked_formulas"]);
+    if records.is_empty() && value.get("formula_id").is_some() { records.push(value.clone()); }
+    for (idx, record) in records.iter().enumerate() {
+        let formula_id = json_str(record, &["formula_id", "id"]).map(ToString::to_string).unwrap_or_else(|| format!("{file_name}-{idx}"));
+        let fid = safe_iri_segment(&formula_id);
+        let evidence_id = json_str(record, &["citation_id", "source_document_id", "paper_id", "chunk_id"]).unwrap_or(&formula_id);
+        let eid = safe_iri_segment(evidence_id);
+        ttl.push_str(&format!("<urn:veritas:evidence:{run}:{eid}> a veritas:EvidenceArtifact ; veritas:hasIdentifier \"{}\" .\n", turtle_escape(evidence_id)));
+        ttl.push_str(&format!("<urn:veritas:formula:{run}:{fid}> a veritas:SymbolicShadow ; veritas:derivedFrom <urn:veritas:evidence:{run}:{eid}>"));
+        if let Some(expr) = json_str(record, &["normalized_latex", "normalized_expression_text", "latex", "raw_latex", "expression_text"]) {
+            ttl.push_str(&format!(" ; veritas:hasExpressionText \"{}\"", turtle_escape(expr)));
+            ttl.push_str(&format!(" ; veritas:hasNormalizedExpressionText \"{}\"", turtle_escape(expr)));
+        }
+        if let Some(source) = json_str(record, &["formula_source", "source", "extraction_source", "ocr_engine", "formula_image_engine"]) {
+            ttl.push_str(&format!(" ; veritas:hasFormulaSource \"{}\"", turtle_escape(source)));
+        }
+        if let Some(status) = json_str(record, &["human_validation_status", "review_decision", "codegen_eligibility_status", "normalized_codegen_status"]) {
+            ttl.push_str(&format!(" ; veritas:hasHumanValidationStatus \"{}\"", turtle_escape(status)));
+            ttl.push_str(&format!(" ; veritas:hasCodegenEligibilityStatus \"{}\"", turtle_escape(status)));
+        }
+        if let Some(confidence) = json_f64_string(record, &["confidence", "ocr_confidence", "latex_ocr_confidence", "formula_image_confidence"]) {
+            ttl.push_str(&format!(" ; veritas:hasConfidenceValue \"{}\"^^xsd:decimal", turtle_escape(&confidence)));
+        }
+        if let Some(image_status) = json_str(record, &["formula_image_status", "image_status"]) {
+            ttl.push_str(&format!(" ; veritas:hasFormulaImageStatus \"{}\"", turtle_escape(image_status)));
+        }
+        if let Some(ocr_status) = json_str(record, &["latex_ocr_status", "ocr_status"]) {
+            ttl.push_str(&format!(" ; veritas:hasLatexOcrStatus \"{}\"", turtle_escape(ocr_status)));
+        }
+        ttl.push_str(" .\n");
+    }
+}
+
+fn append_citation_records_ttl(ttl: &mut String, run: &str, file_name: &str, value: &Value) {
+    let mut records = collect_json_records(value, &["records", "citations", "approved_citations", "blocked_citations"]);
+    if records.is_empty() && value.get("citation_id").is_some() { records.push(value.clone()); }
+    for (idx, record) in records.iter().enumerate() {
+        let citation_id = json_str(record, &["citation_id", "source_document_id", "paper_id", "id"]).map(ToString::to_string).unwrap_or_else(|| format!("{file_name}-{idx}"));
+        let cid = safe_iri_segment(&citation_id);
+        ttl.push_str(&format!("<urn:veritas:citation:{run}:{cid}> a veritas:EvidenceArtifact ; veritas:hasIdentifier \"{}\"", turtle_escape(&citation_id)));
+        if let Some(status) = json_str(record, &["normalized_review_status", "citation_review_status", "review_decision"]) {
+            ttl.push_str(&format!(" ; veritas:hasStatus \"{}\"", turtle_escape(status)));
+        }
+        if let Some(apa) = json_str(record, &["apa_citation", "citation", "title"]) {
+            ttl.push_str(&format!(" ; veritas:hasDescription \"{}\"", turtle_escape(apa)));
+        }
+        ttl.push_str(" .\n");
+    }
+}
+
+fn append_evidence_manifest_ttl(ttl: &mut String, run: &str, value: &Value) {
+    let source_id = json_str(value, &["source_document_id", "paper_id", "document_id"]).unwrap_or("source-document");
+    let sid = safe_iri_segment(source_id);
+    ttl.push_str(&format!("<urn:veritas:document:{run}:{sid}> a veritas:EvidenceArtifact ; veritas:hasIdentifier \"{}\"", turtle_escape(source_id)));
+    if let Some(status) = json_str(value, &["planning_status", "status"]) { ttl.push_str(&format!(" ; veritas:hasStatus \"{}\"", turtle_escape(status))); }
+    if let Some(path) = json_str(value, &["source_pdf", "path"]) { ttl.push_str(&format!(" ; veritas:hasDescription \"{}\"", turtle_escape(path))); }
+    ttl.push_str(" .\n");
+}
+
+fn append_representation_model_ttl(ttl: &mut String, run: &str, value: &Value) {
+    let status = json_str(value, &["status", "review_status"]).unwrap_or("pending_review");
+    ttl.push_str(&format!("<urn:veritas:math-model:{run}> a veritas:MathematicalDiscoveryArtifact ; veritas:hasStatus \"{}\"", turtle_escape(status)));
+    if value.get("axiom_map").is_some() || value.get("axioms").is_some() { ttl.push_str(&format!(" ; veritas:hasAxiomMap <urn:veritas:axiom-map:{run}>")); }
+    if value.get("representation_map").is_some() { ttl.push_str(&format!(" ; veritas:hasRepresentationMap <urn:veritas:representation:{run}>")); }
+    if value.get("invariants").is_some() || value.get("invariant").is_some() { ttl.push_str(&format!(" ; veritas:hasInvariant <urn:veritas:invariant:{run}>")); }
+    if value.get("validation_obligations").is_some() || value.get("validation_requirements").is_some() { ttl.push_str(&format!(" ; veritas:hasValidationRequirement <urn:veritas:validation:{run}>")); }
+    ttl.push_str(" .\n");
+    if value.get("axiom_map").is_some() || value.get("axioms").is_some() { ttl.push_str(&format!("<urn:veritas:axiom-map:{run}> a veritas:AxiomMap .\n")); }
+    if value.get("representation_map").is_some() {
+        ttl.push_str(&format!("<urn:veritas:representation:{run}> a veritas:RepresentationMap ; veritas:mapsFromSurface <urn:veritas:surface:{run}> ; veritas:mapsToLatentStructure <urn:veritas:latent:{run}>"));
+        if value.get("invariants").is_some() || value.get("invariant").is_some() { ttl.push_str(&format!(" ; veritas:preservesInvariant <urn:veritas:invariant:{run}>")); }
+        ttl.push_str(" .\n");
+        ttl.push_str(&format!("<urn:veritas:surface:{run}> a veritas:SurfacePhenomenonDescription .\n<urn:veritas:latent:{run}> a veritas:LatentStructureDescription .\n"));
+    }
+    if value.get("invariants").is_some() || value.get("invariant").is_some() {
+        ttl.push_str(&format!("<urn:veritas:invariant:{run}> a veritas:Invariant ; veritas:hasTransformationFamily <urn:veritas:transformation-family:{run}> .\n<urn:veritas:transformation-family:{run}> a veritas:TransformationFamily .\n"));
+    }
+    if value.get("validation_obligations").is_some() || value.get("validation_requirements").is_some() { ttl.push_str(&format!("<urn:veritas:validation:{run}> a veritas:ValidationCheckSpecification .\n")); }
+}
+
+fn append_planning_context_ttl(ttl: &mut String, run: &str, value: &Value) {
+    let records = collect_json_records(value, &["retrieved_evidence", "approved_citations", "eligible_formulas", "ontology_facts"]);
+    for (idx, record) in records.iter().enumerate() {
+        let id = json_str(record, &["id", "evidence_id", "citation_id", "formula_id"]).map(ToString::to_string).unwrap_or_else(|| format!("planning-evidence-{idx}"));
+        let eid = safe_iri_segment(&id);
+        ttl.push_str(&format!("<urn:veritas:planning-context:{run}:{eid}> a veritas:EvidenceArtifact ; veritas:hasIdentifier \"{}\" ; veritas:derivedFrom <urn:veritas:run:{run}> .\n", turtle_escape(&id)));
+    }
+}
+
+fn append_code_package_ttl(ttl: &mut String, run: &str, value: &Value, workspace: &Path) {
+    let has_validation = workspace.join("validation_results.json").exists();
+    let files = collect_json_records(value, &["files", "source_files"]);
+    for (idx, file) in files.iter().enumerate() {
+        let path = json_str(file, &["path", "file_path", "name"]).map(ToString::to_string).unwrap_or_else(|| format!("generated-file-{idx}"));
+        let fid = safe_iri_segment(&path);
+        ttl.push_str(&format!("<urn:veritas:source:{run}:{fid}> a veritas:SourceCodeArtifact ; veritas:hasIdentifier \"{}\" ; veritas:derivedFrom <urn:veritas:run:{run}>", turtle_escape(&path)));
+        if has_validation { ttl.push_str(&format!(" ; veritas:validatedBy <urn:veritas:validation:{run}> ; veritas:testedBy <urn:veritas:test:{run}:{idx}>")); }
+        ttl.push_str(" .\n");
+        if has_validation { ttl.push_str(&format!("<urn:veritas:test:{run}:{idx}> a veritas:TestSpecification .\n")); }
+    }
+}
+
+fn append_validation_results_ttl(ttl: &mut String, run: &str, value: &Value) {
+    let passed = value.to_string().contains("\"success\":true") || value.to_string().contains("\"success\": true");
+    let status = if passed { "passed" } else { "failed_or_pending" };
+    ttl.push_str(&format!("<urn:veritas:validation:{run}> a veritas:ValidationCheckSpecification, veritas:VerificationResult ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{run}> .\n", status));
+    if passed { ttl.push_str(&format!("<urn:veritas:build:{run}> a veritas:BuildArtifact ; veritas:hasStatus \"local_validated\" ; veritas:validatedBy <urn:veritas:validation:{run}> ; veritas:derivedFrom <urn:veritas:run:{run}> .\n")); }
+}
+
+fn append_math_validation_report_ttl(ttl: &mut String, run: &str, value: &Value) {
+    let status = json_str(value, &["status"]).unwrap_or_else(|| if value.get("ok").and_then(Value::as_bool).unwrap_or(false) { "passed" } else { "blocked_by_math_tools" });
+    ttl.push_str(&format!("<urn:veritas:math-validation:{run}> a veritas:ValidationCheckSpecification ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{run}> .\n", turtle_escape(status)));
+}
+
+fn append_jsonl_record_ttl(ttl: &mut String, run: &str, file_name: &str, value: &Value, idx: usize) {
+    let id = safe_iri_segment(&format!("{}-{}", file_name, idx));
+    let status = json_str(value, &["status", "decision", "human_decision", "final_status"]).unwrap_or("recorded");
+    ttl.push_str(&format!("<urn:veritas:event:{run}:{id}> a veritas:EvidenceArtifact ; veritas:derivedFrom <urn:veritas:run:{run}> ; veritas:hasIdentifier \"{}\" ; veritas:hasStatus \"{}\" .\n", turtle_escape(file_name), turtle_escape(status)));
+}
+
+async fn collect_shacl_data_ttl(state: &AppState, workspace: &Path, plan: &Value) -> (String, Value) {
+    let (artifact_ttl, artifact_context) = collect_artifact_bundle_ttl(workspace, plan).await;
+    let mut data_ttl = artifact_ttl;
     match fetch_shacl_graph_context_ttl(state).await {
         Ok(context_ttl) if !context_ttl.trim().is_empty() => {
             data_ttl.push_str("\n# Fuseki graph-derived SHACL context.\n");
             data_ttl.push_str(&context_ttl);
-            (data_ttl, json!({"ok": true, "source": "fuseki_construct", "bytes": context_ttl.len()}))
+            (data_ttl, json!({"ok": true, "source": "artifact_bundle_plus_fuseki_construct", "artifact_bundle": artifact_context, "fuseki": {"ok": true, "bytes": context_ttl.len()}}))
         }
-        Ok(_) => (data_ttl, json!({"ok": true, "source": "fuseki_construct", "bytes": 0, "warning": "No graph-derived SHACL context returned."})),
+        Ok(_) => (data_ttl, json!({"ok": true, "source": "artifact_bundle", "artifact_bundle": artifact_context, "fuseki": {"ok": true, "bytes": 0, "warning": "No graph-derived SHACL context returned."}})),
         Err(error) => {
-            data_ttl.push_str("\n# Fuseki graph-derived SHACL context unavailable; validating synthetic plan/run obligations only.\n");
-            (data_ttl, json!({"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}))
+            data_ttl.push_str("\n# Fuseki graph-derived SHACL context unavailable; validating artifact bundle only.\n");
+            (data_ttl, json!({"ok": artifact_context.get("ok").and_then(Value::as_bool).unwrap_or(true), "source": "artifact_bundle", "artifact_bundle": artifact_context, "fuseki": {"ok": false, "code": error.code, "message": error.message, "remediation": error.remediation}}))
         }
     }
 }
@@ -2253,6 +2782,14 @@ fn shacl_findings_to_turtle(run_id: &str, report: &Value) -> String {
         ttl.push_str(&format!("<urn:veritas:shacl-finding:{run}:{idx}> a veritas:Finding ; veritas:derivedFrom <urn:veritas:run:{run}> ; veritas:hasStatus \"open\" ; veritas:hasDescription \"{}\" .\n", turtle_escape(line.trim())));
     }
     ttl
+}
+
+pub(crate) fn shacl_report_conforms(report: &Value) -> bool {
+    let ok = report.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let conforms = report.get("conforms").and_then(Value::as_bool)
+        .or_else(|| report.pointer("/result/conforms").and_then(Value::as_bool))
+        .unwrap_or(ok);
+    ok && conforms
 }
 
 async fn run_shacl_validation(state: &AppState, data_ttl: &str, shapes_ttl: &str) -> Result<Value, ApiFailure> {
@@ -2290,6 +2827,9 @@ async fn upload_run_report_to_fuseki(state: &AppState, run_id: &str, report: &Va
     let run_upload = upload_turtle_to_fuseki(state, &graph_uri, &ttl, true, "text/turtle").await?;
     let mut validation_ttl = format!("@prefix veritas: <https://github.com/daddydrac/veritas/ontology#> .\n<urn:veritas:validation:{}> a veritas:VerificationResult ; veritas:hasStatus \"{}\" ; veritas:derivedFrom <urn:veritas:run:{}> .\n", safe_iri_segment(run_id), turtle_escape(status), safe_iri_segment(run_id));
     if let Some(shacl_report) = report.get("automatic_shacl") {
+        validation_ttl.push_str(&shacl_findings_to_turtle(run_id, shacl_report));
+    }
+    if let Some(shacl_report) = report.get("final_shacl") {
         validation_ttl.push_str(&shacl_findings_to_turtle(run_id, shacl_report));
     }
     let validation_upload = upload_turtle_to_fuseki(state, &validation_graph_uri, &validation_ttl, true, "text/turtle").await?;

@@ -53,7 +53,7 @@ services:
       VERITAS_CODE_SERVED_MODEL_NAME: veritas-code
       VERITAS_MATH_SERVED_MODEL_NAME: veritas-math
       VERITAS_COMMAND_RUNNER: local
-      VERITAS_SHACL_ENFORCE: "false"
+      VERITAS_GOVERNANCE_MODE: enforce
       VERITAS_EMBEDDING_URL: http://embedding:8090
     depends_on:
       opensearch:

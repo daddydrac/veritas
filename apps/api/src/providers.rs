@@ -111,6 +111,9 @@ pub struct ChatRequest {
     pub system: String,
     pub user: String,
     pub schema: Option<SchemaKey>,
+    pub tools: Option<Value>,
+    pub tool_choice: Option<Value>,
+    pub parallel_tool_calls: Option<bool>,
 }
 
 pub trait ModelProvider: Send + Sync {
@@ -185,7 +188,8 @@ impl ModelProvider for LocalVllmProvider {
 
     fn chat<'a>(&'a self, req: ChatRequest) -> Pin<Box<dyn Future<Output = Result<Value, ProviderError>> + Send + 'a>> {
         Box::pin(async move {
-            send_openai_compatible_chat(&self.http, ProviderType::LocalVllm, &req.role.url, &req.role.served_model_name, &req.role, &req.system, &req.user, req.schema, None).await
+            let role = req.role.clone();
+            send_openai_compatible_chat(&self.http, ProviderType::LocalVllm, &role.url, &role.served_model_name, &role, &req.system, &req.user, req.schema, None, req.tools, req.tool_choice, req.parallel_tool_calls).await
         })
     }
 }
@@ -227,7 +231,8 @@ impl ModelProvider for RemoteOpenAICompatibleProvider {
             role.model = self.model_for_role(&req.role);
             role.served_model_name = role.model.clone();
             let api_key = env::var(&self.api_key_env).ok().filter(|v| !v.trim().is_empty());
-            send_openai_compatible_chat(&self.http, ProviderType::RemoteOpenAICompatible, &self.base_url, &role.served_model_name, &role, &req.system, &req.user, req.schema, api_key).await
+            let served = role.served_model_name.clone();
+            send_openai_compatible_chat(&self.http, ProviderType::RemoteOpenAICompatible, &self.base_url, &served, &role, &req.system, &req.user, req.schema, api_key, req.tools, req.tool_choice, req.parallel_tool_calls).await
         })
     }
 }
@@ -294,7 +299,11 @@ impl ProviderRouter {
     }
 
     pub async fn chat_raw(&self, role: &ModelRole, system: &str, user: &str, schema: Option<SchemaKey>) -> Result<Value, ProviderError> {
-        let request = ChatRequest { role: role.clone(), system: system.to_string(), user: user.to_string(), schema };
+        self.chat_with_tools(role, system, user, schema, None, None, None).await
+    }
+
+    pub async fn chat_with_tools(&self, role: &ModelRole, system: &str, user: &str, schema: Option<SchemaKey>, tools: Option<Value>, tool_choice: Option<Value>, parallel_tool_calls: Option<bool>) -> Result<Value, ProviderError> {
+        let request = ChatRequest { role: role.clone(), system: system.to_string(), user: user.to_string(), schema, tools, tool_choice, parallel_tool_calls };
         let local_result = self.call_with_retries(&self.local, request.clone()).await;
         match local_result {
             Ok(value) => Ok(value),
@@ -479,6 +488,9 @@ async fn openai_compatible_models_health(
     base_url: &str,
     expected_model: &str,
     api_key: Option<String>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
+    parallel_tool_calls: Option<bool>,
 ) -> Result<Value, ProviderError> {
     let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
     let started = Instant::now();
@@ -525,6 +537,9 @@ async fn send_openai_compatible_chat(
     user: &str,
     schema: Option<SchemaKey>,
     api_key: Option<String>,
+    tools: Option<Value>,
+    tool_choice: Option<Value>,
+    parallel_tool_calls: Option<bool>,
 ) -> Result<Value, ProviderError> {
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
     let mut payload = json!({
@@ -538,6 +553,15 @@ async fn send_openai_compatible_chat(
         payload["response_format"] = json!({"type": "json_object"});
         payload["guided_json"] = schema_json(schema_key);
         payload["extra_body"] = json!({"guided_json": schema_json(schema_key)});
+    }
+    if let Some(tools) = tools {
+        payload["tools"] = tools;
+    }
+    if let Some(tool_choice) = tool_choice {
+        payload["tool_choice"] = tool_choice;
+    }
+    if let Some(parallel) = parallel_tool_calls {
+        payload["parallel_tool_calls"] = json!(parallel);
     }
     let mut request = http.post(&url).json(&payload);
     if let Some(key) = api_key {
