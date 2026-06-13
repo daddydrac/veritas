@@ -236,3 +236,59 @@ Phase 3 adds the real Evidence Eligibility Registry. Local ingestion writes `evi
 | Math-tool gate | Implemented as enforcement boundary | `apps/api/src/gates/math_tools.rs` blocks math-heavy runs until real math validation artifacts exist. |
 | SHACL pre-codegen gate | Implemented | `apps/api/src/gates/shacl.rs` blocks enforced SHACL failures before codegen. |
 | Blocked final report | Implemented | `apps/api/src/gates/mod.rs` writes `pre_codegen_blocked_report.json` and `final_report.json` with no files or commands. |
+
+## Phase 5 — Tool-Verified Math Engine
+
+Veritas now includes a real Tool-Verified Math Engine. Math-heavy runs no longer have to rely only on LLM reasoning before code generation. The application can call the `math-tools` service, persist `math_tool_calls.jsonl`, `math_tool_results.jsonl`, and `math_validation_report.json`, and the pre-codegen Gate Engine blocks when the report contains blocking findings or counterexamples.
+
+The math-tools service exposes real executable tools: `parse_latex`, `normalize_expression`, `symbolic_simplify`, `symbolic_differentiate`, `symbolic_equivalence`, `numeric_validate`, `counterexample_search`, `dimension_check`, and `generate_property_tests`. The service uses SymPy, NumPy, SciPy/mpmath-compatible numeric evaluation, and generated property-test code. No model output is treated as mathematical truth unless tool results, governance gates, and validation artifacts support it.
+
+
+| Phase 6 SHACL artifact governance | Implemented | `VERITAS_GOVERNANCE_MODE`, artifact bundle TTL, pre-codegen SHACL, final SHACL, and blocked-by-governance behavior added. |
+
+
+## Phase 7 — Artifact Decision Engine
+
+Phase 7 adds a canonical Artifact Decision Engine in `apps/api/src/artifact_decision.rs`. Final artifact status is no longer granted directly by the code-generation loop. The engine reads real run artifacts, gate decisions, validation results, human checkpoint state, SHACL results, and host-validation evidence before producing `artifact_decision.json`.
+
+Important behavior:
+
+- validation success alone does not imply production readiness;
+- missing human approval results in `awaiting_human_approval`;
+- failed SHACL results in `blocked_by_governance` when governance is enforced;
+- failed validation results in `validation_failed` or `repair_failed`;
+- missing host validation results in `local_validated_host_pending`;
+- `production_validated` is only possible when host validation evidence exists and passes.
+
+## Phase 8 — lineage schema enforcement
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Planner step lineage required | Source-level implemented | `schemas/planner.schema.json` |
+| Codegen file lineage required | Source-level implemented | `schemas/codegen.schema.json` |
+| Final report lineage required | Source-level implemented | `schemas/run_report.schema.json` |
+| Runtime lineage validation before file writes | Source-level implemented | `apps/api/src/lineage.rs`, `apps/api/src/main.rs` |
+| Unknown lineage IDs rejected | Source-level implemented | `lineage.codegen_invalid`, `lineage.plan_invalid` |
+| Host Rust/Docker/live service validation | Pending host | Cargo/Docker unavailable in this sandbox |
+
+
+| Phase 8 lineage schemas | implemented | source validated | Planner, codegen, and run-report schemas require explicit lineage; `apps/api/src/lineage.rs` validates codegen lineage before file writes. |
+
+## Phase 9 — Evidence-grounded planning
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Build planning context before planner call | Implemented | `apps/api/src/planning_context.rs`, `apps/api/src/main.rs` |
+| Block production-bound planning without approved evidence | Implemented | `planning_context.no_approved_evidence` |
+| Validate planner evidence/citation/formula IDs | Implemented | `planning_context::validate_plan_references` |
+| Restrict empty-evidence bypass to dev exploratory mode | Implemented | `execution_mode=dev_exploratory` gate |
+
+## Phase 9 — Evidence-grounded planning
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Planning context artifact | Implemented | `apps/api/src/planning_context.rs`, `schemas/planning_context.schema.json` |
+| Production planning blocks without approved evidence | Implemented | `planning_context.no_approved_evidence` gate |
+| Planner receives approved IDs only | Implemented | `planner_prompt_contract` and `planning_context::validate_plan_references` |
+| Empty-evidence bypass restricted to dev | Implemented | `execution_mode=dev_exploratory` and `dev_only_unverified` |
+| Runtime validation | Host pending | Cargo/Docker/live services still require target host validation |

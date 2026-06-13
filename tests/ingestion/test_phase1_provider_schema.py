@@ -29,12 +29,12 @@ def test_planner_schema_rejects_unknown_tools_and_missing_fields() -> None:
     valid = {
         "objective": {"summary": "Build tested code"},
         "steps": [
-            {"id": "r", "tool": "retrieval", "description": "Retrieve", "input": {}, "success_criteria": ["evidence"]},
-            {"id": "c", "tool": "code_generation", "description": "Code", "input": {}, "success_criteria": ["files"]},
-            {"id": "t", "tool": "test_runner", "description": "Test", "input": {}, "success_criteria": ["tests"]},
+            {"id": "r", "tool": "retrieval", "description": "Retrieve", "input": {}, "success_criteria": ["evidence"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-test"], "human_checkpoint_ids": ["plan_review"]},
+            {"id": "c", "tool": "code_generation", "description": "Code", "input": {}, "success_criteria": ["files"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-test"], "human_checkpoint_ids": ["code_architecture_review"]},
+            {"id": "t", "tool": "test_runner", "description": "Test", "input": {}, "success_criteria": ["tests"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-test"], "human_checkpoint_ids": ["validation_review"]},
         ],
-        "risks": [{"risk": "bad output", "mitigation": "validate"}],
-        "validation_gates": [{"check": "cargo test", "command": "cargo test"}],
+        "risks": [{"id": "risk-1", "risk": "bad output", "mitigation": "validate", "severity": "medium"}],
+        "validation_gates": [{"id": "vg-test", "check": "cargo test", "command": "cargo test"}],
     }
     jsonschema.validate(valid, schema)
     invalid = dict(valid)
@@ -51,14 +51,14 @@ def test_codegen_schema_rejects_unsafe_paths_and_extra_properties() -> None:
     valid = {
         "package_name": "veritas_generated_example",
         "language": "rust",
-        "files": [{"path": "src/lib.rs", "content": "pub fn ok() {}"}],
-        "commands": [{"command": "cargo test", "purpose": "validate"}],
+        "files": [{"path": "src/lib.rs", "content": "pub fn ok() {}", "purpose": "implementation", "derived_from_plan_step_ids": ["c"], "derived_from_evidence_ids": ["chunk-1"], "derived_from_citation_ids": ["citation-1"], "derived_from_formula_ids": ["formula-1"], "required_validation_ids": ["vg-test"]}],
+        "commands": [{"command": "cargo test", "purpose": "validate", "derived_from_plan_step_ids": ["t"], "required_validation_ids": ["vg-test"]}],
         "artifact_status": "generated_unvalidated",
     }
     jsonschema.validate(valid, schema)
     for bad_path in ["/tmp/evil.rs", "../evil.rs", "src/../../evil.rs"]:
         invalid = dict(valid)
-        invalid["files"] = [{"path": bad_path, "content": "bad"}]
+        invalid["files"] = [{"path": bad_path, "content": "bad", "purpose": "bad", "derived_from_plan_step_ids": ["c"], "derived_from_evidence_ids": ["chunk-1"], "derived_from_citation_ids": ["citation-1"], "derived_from_formula_ids": ["formula-1"], "required_validation_ids": ["vg-test"]}]
         try:
             jsonschema.validate(invalid, schema)
             raise AssertionError(f"unsafe path should fail schema validation: {bad_path}")
