@@ -64,8 +64,9 @@ skip_step() {
 }
 
 run_step "Packaging check" scripts/check-packaging.sh
-run_step "Python compile" python3 -m compileall services/embedding services/ingestion services/shacl tests/fakes
+run_step "Python compile" python3 -m compileall services/embedding services/ingestion services/shacl services/math_tools tests/fakes
 run_step "Real local ingestion backend" pytest -q tests/ingestion/test_phase2_real_local_ingestion_backend.py --disable-warnings
+run_step "Tool-Verified Math Engine" pytest -q tests/ingestion/test_phase5_tool_verified_math_engine.py --disable-warnings
 if [ "${VERITAS_ACCEPTANCE_MODE:-host_acceptance}" = "mocked_acceptance" ]; then
   skip_step "Python phase tests" "source-mocked profile runs focused E2E; run PYTHONPATH=services/ingestion pytest -q tests/ingestion separately for full Python coverage"
 else

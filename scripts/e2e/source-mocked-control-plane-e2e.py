@@ -165,15 +165,15 @@ def planner_payload() -> dict[str, Any]:
             "success_criteria": ["planner schema valid", "codegen schema valid", "validation passes after repair"],
         },
         "steps": [
-            {"id": "retrieve", "tool": "retrieval", "description": "Retrieve mocked evidence", "input": {"query": "fixture formula"}, "success_criteria": ["evidence exists"]},
-            {"id": "math", "tool": "math_reasoning", "description": "Represent formula as symbolic shadow", "input": {}, "success_criteria": ["invariant obligation stated"]},
-            {"id": "code", "tool": "code_generation", "description": "Write package", "input": {}, "success_criteria": ["files written"]},
-            {"id": "test", "tool": "test_runner", "description": "Run tests and repair once", "input": {}, "success_criteria": ["tests pass"]},
+            {"id": "retrieve", "tool": "retrieval", "description": "Retrieve mocked evidence", "input": {"query": "fixture formula"}, "success_criteria": ["evidence exists"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-initial-failure"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-pytest"], "human_checkpoint_ids": ["plan_review"]},
+            {"id": "math", "tool": "math_reasoning", "description": "Represent formula as symbolic shadow", "input": {}, "success_criteria": ["invariant obligation stated"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-initial-failure"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-pytest"], "human_checkpoint_ids": ["plan_review"]},
+            {"id": "code", "tool": "code_generation", "description": "Write package", "input": {}, "success_criteria": ["files written"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-initial-failure"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-pytest"], "human_checkpoint_ids": ["code_architecture_review"]},
+            {"id": "test", "tool": "test_runner", "description": "Run tests and repair once", "input": {}, "success_criteria": ["tests pass"], "evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "risk_ids": ["risk-initial-failure"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-pytest"], "human_checkpoint_ids": ["validation_review"]},
         ],
-        "files_to_generate": [{"path": "src/veritas_generated_example/__init__.py", "purpose": "implementation"}],
-        "commands_to_run": [{"command": "python -m pytest -q", "purpose": "validate generated package"}],
-        "risks": [{"risk": "initial generated code may fail", "mitigation": "bounded repair loop", "severity": "medium"}],
-        "validation_gates": [{"check": "python pytest", "command": "python -m pytest -q"}],
+        "files_to_generate": [{"path": "src/veritas_generated_example/__init__.py", "purpose": "implementation", "derived_from_step_ids": ["code"]}],
+        "commands_to_run": [{"command": "python -m pytest -q", "purpose": "validate generated package", "validation_gate_ids": ["vg-pytest"]}],
+        "risks": [{"id": "risk-initial-failure", "risk": "initial generated code may fail", "mitigation": "bounded repair loop", "severity": "medium"}],
+        "validation_gates": [{"id": "vg-pytest", "check": "python pytest", "command": "python -m pytest -q", "expected_result": "all tests pass"}],
     }
 
 
@@ -221,11 +221,11 @@ def _codegen_payload(fixed: bool) -> dict[str, Any]:
         "package_name": "veritas_generated_example",
         "language": "python",
         "files": [
-            {"path": "src/veritas_generated_example/__init__.py", "content": body, "purpose": "implementation"},
-            {"path": "tests/test_add.py", "content": "from veritas_generated_example import add\n\ndef test_add():\n    assert add(2, 3) == 5\n", "purpose": "unit test"},
-            {"path": "pyproject.toml", "content": "[tool.pytest.ini_options]\npythonpath = [\"src\"]\n", "purpose": "pytest config"},
+            {"path": "src/veritas_generated_example/__init__.py", "content": body, "purpose": "implementation", "derived_from_plan_step_ids": ["code"], "derived_from_evidence_ids": ["chunk-1"], "derived_from_citation_ids": ["citation-1"], "derived_from_formula_ids": ["formula-1"], "required_validation_ids": ["vg-pytest"]},
+            {"path": "tests/test_add.py", "content": "from veritas_generated_example import add\n\ndef test_add():\n    assert add(2, 3) == 5\n", "purpose": "unit test", "derived_from_plan_step_ids": ["test"], "derived_from_evidence_ids": ["chunk-1"], "derived_from_citation_ids": ["citation-1"], "derived_from_formula_ids": ["formula-1"], "required_validation_ids": ["vg-pytest"]},
+            {"path": "pyproject.toml", "content": "[tool.pytest.ini_options]\npythonpath = [\"src\"]\n", "purpose": "pytest config", "derived_from_plan_step_ids": ["test"], "derived_from_evidence_ids": ["chunk-1"], "derived_from_citation_ids": ["citation-1"], "derived_from_formula_ids": ["formula-1"], "required_validation_ids": ["vg-pytest"]},
         ],
-        "commands": [{"command": "python -m pytest -q", "purpose": "run generated unit tests"}],
+        "commands": [{"command": "python -m pytest -q", "purpose": "run generated unit tests", "derived_from_plan_step_ids": ["test"], "required_validation_ids": ["vg-pytest"]}],
         "assumptions": ["source-mocked codegen fixture"],
         "validation_summary": "pytest must pass before production_candidate_validated",
         "artifact_status": "generated_unvalidated",
@@ -328,12 +328,63 @@ def main() -> int:
     if second_result.exit_code != 0:
         raise AssertionError("repaired source-mocked package did not pass validation")
 
-    run_report = {
+    artifact_decision = {
+        "ok": True,
+        "kind": "VeritasArtifactDecision",
         "run_id": "source-mocked-control-plane-e2e",
+        "artifact_status": "production_candidate_validated",
+        "final_status": "production_candidate_validated",
+        "validation_status": {"passed": True, "status": "passed", "commands_run": 2},
+        "production_status_allowed": True,
+        "host_validation_status": "not_required_source_mocked",
+        "governance_mode": "enforce",
+        "decision_reason": "Source-mocked control-plane proof passed all schema, generation, repair, and validation checks.",
+        "decision_factors": {"mode": "source_mocked", "validation": "passed", "repair": "exercised"},
+        "remaining_limitations": ["source-mocked proof does not replace live Docker/Cargo/vLLM validation"],
+        "decision_source": "application_artifact_decision_engine",
+    }
+    source_documents = {"source_document_id": "source-doc-1", "title": "source mocked fixture"}
+    citations = [{"citation_id": "citation-1", "citation_review_status": "approved"}]
+    formulas = [{"formula_id": "formula-1", "human_validation_status": "approved"}]
+    review_decisions = {"human_checkpoints": [checkpoint], "citations": citations, "formulas": formulas}
+    planning_context = {"kind": "VeritasPlanningContext", "allowed_lineage_ids": {"evidence_ids": ["chunk-1"], "citation_ids": ["citation-1"], "formula_ids": ["formula-1"], "plan_step_ids": ["retrieve", "math", "code", "test"], "risk_ids": ["risk-initial-failure"], "risk_ids": ["risk-1"], "validation_gate_ids": ["vg-pytest"], "human_checkpoint_ids": ["plan_review", "code_architecture_review", "validation_review"]}}
+    file_lineage = [
+        {
+            "path": f["path"],
+            "purpose": f.get("purpose"),
+            "derived_from_plan_step_ids": f.get("derived_from_plan_step_ids", []),
+            "derived_from_evidence_ids": f.get("derived_from_evidence_ids", []),
+            "derived_from_citation_ids": f.get("derived_from_citation_ids", []),
+            "derived_from_formula_ids": f.get("derived_from_formula_ids", []),
+            "required_validation_ids": f.get("required_validation_ids", []),
+        }
+        for f in codegen_fixed["files"]
+    ]
+    run_report = {
+        "ok": True,
+        "kind": "VeritasAutonomousRunReport",
+        "run_id": "source-mocked-control-plane-e2e",
+        "workspace": str(OUT),
         "original_task": "Prove structured fake-vLLM planning/codegen/repair loop at source level.",
+        "language": "python",
+        "source_documents": source_documents,
+        "citations": citations,
+        "formulas": formulas,
+        "review_decisions": review_decisions,
+        "representation_model": math,
+        "planning_context": planning_context,
+        "generated_plan": planner,
+        "plan_lineage": {"plan": planner, "allowed_lineage_ids": planning_context["allowed_lineage_ids"]},
+        "file_lineage": file_lineage,
+        "command_lineage": {"declared_commands": codegen_fixed["commands"], "executed_commands": [first_result.to_json(), second_result.to_json()]},
+        "validation_lineage": {"validation_results": [first_result.to_json(), second_result.to_json()]},
+        "repair_lineage": [{"attempt": 1, "reason": "unit test failed", "repair_schema_validated": True}],
+        "governance_lineage": {"artifact_decision": artifact_decision, "gate_decisions": []},
         "files_changed": sorted(set(files_changed + [f["path"] for f in repair["files"]])),
         "commands_run": [first_result.to_json(), second_result.to_json()],
-        "final_status": "production_candidate_validated",
+        "artifact_status": artifact_decision["artifact_status"],
+        "artifact_decision": artifact_decision,
+        "final_status": artifact_decision["final_status"],
         "model_routes_used": {
             "planner": "fake_vllm_structured_output",
             "math": "fake_vllm_structured_output",
@@ -349,8 +400,7 @@ def main() -> int:
         "validation_results": [first_result.to_json(), second_result.to_json()],
         "retry_history": [{"attempt": 1, "reason": "unit test failed", "repair_schema_validated": True}],
         "human_checkpoints": [checkpoint],
-        "schema_contracts": ["planner", "math_reasoning", "human_checkpoint", "codegen", "repair", "run_report"],
-        "limitations": ["source-mocked proof does not replace live Docker/Cargo/vLLM validation"],
+        "remaining_limitations": ["source-mocked proof does not replace live Docker/Cargo/vLLM validation"],
     }
     validate("run_report", run_report)
     write_json(OUT / "final_report.json", run_report)

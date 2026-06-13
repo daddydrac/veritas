@@ -2,17 +2,286 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "VeritasRunReport",
   "type": "object",
-  "additionalProperties": true,
-  "required": ["run_id", "original_task", "files_changed", "commands_run", "final_status"],
+  "additionalProperties": false,
+  "required": [
+    "ok",
+    "kind",
+    "run_id",
+    "workspace",
+    "original_task",
+    "language",
+    "source_documents",
+    "citations",
+    "formulas",
+    "review_decisions",
+    "representation_model",
+    "planning_context",
+    "generated_plan",
+    "plan_lineage",
+    "file_lineage",
+    "command_lineage",
+    "validation_lineage",
+    "repair_lineage",
+    "governance_lineage",
+    "files_changed",
+    "commands_run",
+    "validation_results",
+    "retry_history",
+    "artifact_decision",
+    "artifact_status",
+    "final_status"
+  ],
   "properties": {
-    "run_id": {"type": "string", "minLength": 1},
-    "original_task": {"type": "string", "minLength": 1},
-    "files_changed": {"type": "array", "items": {"type": "string"}},
-    "commands_run": {"type": "array"},
-    "final_status": {"type": "string", "enum": ["production_candidate_validated", "validation_failed", "generated_unvalidated", "failed", "cancelled", "awaiting_human_checkpoint"]},
-    "model_routes_used": {"type": "object"},
-    "provider_route_history": {"type": "array"},
-    "validation_results": {"type": "array"},
-    "retry_history": {"type": "array"}
+    "ok": {
+      "type": "boolean"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "original_task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_documents": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "citations": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "formulas": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "review_decisions": {
+      "type": "object"
+    },
+    "representation_model": {
+      "type": "object"
+    },
+    "planning_context": {
+      "type": "object"
+    },
+    "generated_plan": {
+      "type": "object"
+    },
+    "plan_lineage": {
+      "type": "object"
+    },
+    "file_lineage": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "command_lineage": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "validation_lineage": {
+      "type": [
+        "object",
+        "array"
+      ]
+    },
+    "repair_lineage": {
+      "type": "array"
+    },
+    "governance_lineage": {
+      "type": "object"
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands_run": {
+      "type": "array"
+    },
+    "validation_results": {
+      "type": "array"
+    },
+    "retry_history": {
+      "type": "array"
+    },
+    "artifact_decision": {
+      "type": "object"
+    },
+    "artifact_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ingestion_incomplete",
+        "awaiting_evidence_review",
+        "awaiting_human_approval",
+        "blocked_by_formula_review",
+        "blocked_by_citation_review",
+        "blocked_by_math_tools",
+        "blocked_by_governance",
+        "validation_failed",
+        "repair_failed",
+        "local_validated_host_pending",
+        "dev_only_unverified",
+        "production_candidate_validated",
+        "production_validated",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "generated_package_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ingestion_incomplete",
+        "awaiting_evidence_review",
+        "awaiting_human_approval",
+        "blocked_by_formula_review",
+        "blocked_by_citation_review",
+        "blocked_by_math_tools",
+        "blocked_by_governance",
+        "validation_failed",
+        "repair_failed",
+        "local_validated_host_pending",
+        "dev_only_unverified",
+        "production_candidate_validated",
+        "production_validated",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "final_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ingestion_incomplete",
+        "awaiting_evidence_review",
+        "awaiting_human_approval",
+        "blocked_by_formula_review",
+        "blocked_by_citation_review",
+        "blocked_by_math_tools",
+        "blocked_by_governance",
+        "validation_failed",
+        "repair_failed",
+        "local_validated_host_pending",
+        "dev_only_unverified",
+        "production_candidate_validated",
+        "production_validated",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "model_routes_used": {
+      "type": "object"
+    },
+    "provider_route_history": {
+      "type": "array"
+    },
+    "tool_calls_performed": {
+      "type": "array"
+    },
+    "automatic_shacl": {
+      "type": "object"
+    },
+    "final_shacl": {
+      "type": "object"
+    },
+    "governance_mode": {
+      "type": "string"
+    },
+    "pre_codegen_gates": {
+      "type": "object"
+    },
+    "human_checkpoint_policy": {
+      "type": "string"
+    },
+    "human_checkpoints": {
+      "type": "array"
+    },
+    "human_checkpoint_gate": {
+      "type": "object"
+    },
+    "attempts_performed": {
+      "type": "integer"
+    },
+    "retries_performed": {
+      "type": "integer"
+    },
+    "resumed": {
+      "type": "boolean"
+    },
+    "remaining_limitations": {
+      "type": "array"
+    },
+    "code_model_output": {
+      "type": "object"
+    },
+    "fuseki_run_graph_upload": {
+      "type": "object"
+    },
+    "blocked_stage": {
+      "type": "string"
+    },
+    "pre_codegen_gate": {
+      "type": "object"
+    },
+    "artifact_lifecycle_state": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array"
+    },
+    "schema_contracts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "artifactStatus": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ingestion_incomplete",
+        "awaiting_evidence_review",
+        "awaiting_human_approval",
+        "blocked_by_formula_review",
+        "blocked_by_citation_review",
+        "blocked_by_math_tools",
+        "blocked_by_governance",
+        "validation_failed",
+        "repair_failed",
+        "local_validated_host_pending",
+        "dev_only_unverified",
+        "production_candidate_validated",
+        "production_validated",
+        "cancelled",
+        "failed"
+      ]
+    }
   }
 }

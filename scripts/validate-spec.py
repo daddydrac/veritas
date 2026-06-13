@@ -48,7 +48,46 @@ REQUIRED_FILES = [
     "packages/ontology/shacl/veritas-core.shacl.ttl",
     "packages/ontology/shacl/veritas-math.shacl.ttl",
     "services/shacl/Dockerfile",
+    "services/math_tools/app.py",
+    "services/math_tools/Dockerfile",
+    "services/math_tools/requirements.txt",
+    "docs/tutorials/PHASE5_TOOL_VERIFIED_MATH_ENGINE.md",
+    "tests/ingestion/test_phase5_tool_verified_math_engine.py",
+    "tests/ingestion/test_phase6_shacl_artifact_governance.py",
+    "docs/tutorials/PHASE6_SHACL_ARTIFACT_GOVERNANCE.md",
+    "schemas/tools/numeric_validate.output.schema.json",
+    "schemas/tools/numeric_validate.input.schema.json",
+    "schemas/tools/parse_latex.output.schema.json",
+    "schemas/tools/parse_latex.input.schema.json",
+    "apps/api/src/math_tools.rs",
+    "apps/api/src/tools/mod.rs",
+    "apps/api/src/tools/registry.rs",
+    "apps/api/src/tools/executor.rs",
+    "apps/api/src/tools/scheduler.rs",
+    "schemas/math_validation_report.schema.json",
     "apps/api/src/main.rs",
+    "apps/api/src/artifact_decision.rs",
+    "schemas/artifact_decision.schema.json",
+    "tests/ingestion/test_phase7_artifact_decision_engine.py",
+    "docs/tutorials/PHASE7_ARTIFACT_DECISION_ENGINE.md",
+    "apps/api/src/lineage.rs",
+    "docs/tutorials/PHASE8_LINEAGE_SCHEMAS.md",
+    "tests/ingestion/test_phase8_lineage_schemas.py",
+    "apps/api/src/planning_context.rs",
+    "schemas/planning_context.schema.json",
+    "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md",
+    "tests/ingestion/test_phase9_evidence_grounded_planning.py",
+    "apps/api/src/planning_context.rs",
+    "schemas/planning_context.schema.json",
+    "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md",
+    "tests/ingestion/test_phase9_evidence_grounded_planning.py",
+    "apps/api/src/lineage.rs",
+    "docs/tutorials/PHASE8_LINEAGE_SCHEMAS.md",
+    "tests/ingestion/test_phase8_lineage_schemas.py",
+    "apps/api/src/planning_context.rs",
+    "schemas/planning_context.schema.json",
+    "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md",
+    "tests/ingestion/test_phase9_evidence_grounded_planning.py",
     "apps/api/src/journey.rs",
     "apps/api/src/providers.rs",
     "apps/api/src/schemas.rs",
@@ -1065,6 +1104,174 @@ def check_phase4_pre_execution_gate_engine() -> dict:
     ]
     return check_contains_all("phase4.pre_execution_gate_engine", blobs, required, read_errors)
 
+
+def check_phase5_tool_verified_math_engine() -> dict:
+    blobs = {
+        "services/math_tools/app.py": (ROOT / "services/math_tools/app.py").read_text(encoding="utf-8"),
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/math_tools.rs": (ROOT / "apps/api/src/math_tools.rs").read_text(encoding="utf-8"),
+        "apps/api/src/tools/registry.rs": (ROOT / "apps/api/src/tools/registry.rs").read_text(encoding="utf-8"),
+        "apps/api/src/providers.rs": (ROOT / "apps/api/src/providers.rs").read_text(encoding="utf-8"),
+        "schemas/tools/math_validation_report.schema.json": (ROOT / "schemas/tools/math_validation_report.schema.json").read_text(encoding="utf-8"),
+        "docker-compose.yml": (ROOT / "docker-compose.yml").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("services/math_tools/app.py", "def parse_latex_endpoint"),
+        ("services/math_tools/app.py", "def numeric_validate_endpoint"),
+        ("services/math_tools/app.py", "def validate_formula"),
+        ("apps/api/src/main.rs", "math_tools::validate_workspace_if_required"),
+        ("apps/api/src/main.rs", "route(\"/math-tools/validate\""),
+        ("apps/api/src/providers.rs", "pub tools: Option<Value>"),
+        ("apps/api/src/providers.rs", "payload[\"tools\"]"),
+        ("docker-compose.yml", "math-tools:"),
+    ]
+    return check_contains_all("phase5.tool_verified_math_engine", blobs, required)
+
+
+def check_phase6_shacl_artifact_governance() -> dict:
+    blobs = {
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/governance.rs": (ROOT / "apps/api/src/governance.rs").read_text(encoding="utf-8"),
+        "apps/api/src/gates/shacl.rs": (ROOT / "apps/api/src/gates/shacl.rs").read_text(encoding="utf-8"),
+        "docs/tutorials/PHASE6_SHACL_ARTIFACT_GOVERNANCE.md": (ROOT / "docs/tutorials/PHASE6_SHACL_ARTIFACT_GOVERNANCE.md").read_text(encoding="utf-8"),
+        "tests/ingestion/test_phase6_shacl_artifact_governance.py": (ROOT / "tests/ingestion/test_phase6_shacl_artifact_governance.py").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("apps/api/src/main.rs", "governance_mode: GovernanceMode"),
+        ("apps/api/src/main.rs", "collect_artifact_bundle_ttl"),
+        ("apps/api/src/main.rs", "VERITAS_SHACL_ARTIFACT_FILES"),
+        ("apps/api/src/main.rs", "final_artifact_shacl"),
+        ("apps/api/src/main.rs", "blocked_by_governance"),
+        ("apps/api/src/governance.rs", "VERITAS_GOVERNANCE_MODE"),
+        ("apps/api/src/governance.rs", "Self::Enforce"),
+        ("apps/api/src/gates/shacl.rs", "governance_mode.enforces()"),
+        ("docs/tutorials/PHASE6_SHACL_ARTIFACT_GOVERNANCE.md", "artifact-based"),
+        ("tests/ingestion/test_phase6_shacl_artifact_governance.py", "test_shacl_data_is_built_from_real_workspace_artifacts"),
+    ]
+    return check_contains_all("phase6.shacl_artifact_governance", blobs, required)
+
+
+def check_phase7_artifact_decision_engine() -> dict:
+    blobs = {
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/artifact_decision.rs": (ROOT / "apps/api/src/artifact_decision.rs").read_text(encoding="utf-8"),
+        "schemas/artifact_decision.schema.json": (ROOT / "schemas/artifact_decision.schema.json").read_text(encoding="utf-8"),
+        "schemas/run_report.schema.json": (ROOT / "schemas/run_report.schema.json").read_text(encoding="utf-8"),
+        "tests/ingestion/test_phase7_artifact_decision_engine.py": (ROOT / "tests/ingestion/test_phase7_artifact_decision_engine.py").read_text(encoding="utf-8"),
+        "README.md": (ROOT / "README.md").read_text(encoding="utf-8"),
+        "VALIDATION_MATRIX.md": (ROOT / "VALIDATION_MATRIX.md").read_text(encoding="utf-8"),
+        "AUDIT.md": (ROOT / "AUDIT.md").read_text(encoding="utf-8"),
+        "FEATURES.md": (ROOT / "FEATURES.md").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("apps/api/src/main.rs", "artifact_decision::decide_completed_run"),
+        ("apps/api/src/main.rs", "artifact_decision.json"),
+        ("apps/api/src/artifact_decision.rs", "VeritasArtifactDecision"),
+        ("apps/api/src/artifact_decision.rs", "local_validated_host_pending"),
+        ("apps/api/src/artifact_decision.rs", "production_validated"),
+        ("apps/api/src/artifact_decision.rs", "Host validation has not passed"),
+        ("schemas/artifact_decision.schema.json", "application_artifact_decision_engine"),
+        ("schemas/run_report.schema.json", "artifact_decision"),
+        ("tests/ingestion/test_phase7_artifact_decision_engine.py", "test_artifact_decision_engine_source_contract"),
+        ("README.md", "Phase 7"),
+        ("VALIDATION_MATRIX.md", "Phase 7"),
+        ("AUDIT.md", "Phase 7"),
+        ("FEATURES.md", "Artifact Decision Engine"),
+    ]
+    return check_contains_all("phase7.artifact_decision_engine", blobs, required)
+
+
+def check_phase8_lineage_schemas() -> dict:
+    blobs = {
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/lineage.rs": (ROOT / "apps/api/src/lineage.rs").read_text(encoding="utf-8"),
+        "schemas/planner.schema.json": (ROOT / "schemas/planner.schema.json").read_text(encoding="utf-8"),
+        "schemas/codegen.schema.json": (ROOT / "schemas/codegen.schema.json").read_text(encoding="utf-8"),
+        "schemas/run_report.schema.json": (ROOT / "schemas/run_report.schema.json").read_text(encoding="utf-8"),
+        "tests/ingestion/test_phase8_lineage_schemas.py": (ROOT / "tests/ingestion/test_phase8_lineage_schemas.py").read_text(encoding="utf-8"),
+        "docs/tutorials/PHASE8_LINEAGE_SCHEMAS.md": (ROOT / "docs/tutorials/PHASE8_LINEAGE_SCHEMAS.md").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("apps/api/src/main.rs", "lineage::validate_plan_lineage"),
+        ("apps/api/src/main.rs", "lineage::validate_codegen_lineage_for_plan"),
+        ("apps/api/src/main.rs", "write_generated_files"),
+        ("apps/api/src/lineage.rs", "lineage.codegen_invalid"),
+        ("apps/api/src/lineage.rs", "lineage.plan_invalid"),
+        ("apps/api/src/lineage.rs", "derived_from_citation_ids"),
+        ("schemas/planner.schema.json", "evidence_ids"),
+        ("schemas/planner.schema.json", "risk_ids"),
+        ("schemas/codegen.schema.json", "derived_from_evidence_ids"),
+        ("schemas/codegen.schema.json", "derived_from_citation_ids"),
+        ("schemas/run_report.schema.json", "additionalProperties"),
+        ("schemas/run_report.schema.json", "governance_lineage"),
+        ("tests/ingestion/test_phase8_lineage_schemas.py", "test_application_blocks_file_writes_until_codegen_lineage_is_validated"),
+        ("docs/tutorials/PHASE8_LINEAGE_SCHEMAS.md", "lineage"),
+    ]
+    return check_contains_all("phase8.lineage_schemas", blobs, required)
+
+
+def check_phase9_evidence_grounded_planning() -> dict:
+    blobs = {
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/planning_context.rs": (ROOT / "apps/api/src/planning_context.rs").read_text(encoding="utf-8"),
+        "schemas/planning_context.schema.json": (ROOT / "schemas/planning_context.schema.json").read_text(encoding="utf-8"),
+        "tests/ingestion/test_phase9_evidence_grounded_planning.py": (ROOT / "tests/ingestion/test_phase9_evidence_grounded_planning.py").read_text(encoding="utf-8"),
+        "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md": (ROOT / "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md").read_text(encoding="utf-8"),
+        "README.md": (ROOT / "README.md").read_text(encoding="utf-8"),
+        "FEATURES.md": (ROOT / "FEATURES.md").read_text(encoding="utf-8"),
+        "AUDIT.md": (ROOT / "AUDIT.md").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("apps/api/src/main.rs", "mod planning_context;"),
+        ("apps/api/src/main.rs", "planning_context::build"),
+        ("apps/api/src/main.rs", "planning_context::validate_plan_references"),
+        ("apps/api/src/main.rs", "planning_context::write_context"),
+        ("apps/api/src/planning_context.rs", "VeritasPlanningContext"),
+        ("apps/api/src/planning_context.rs", "planning_context.no_approved_evidence"),
+        ("apps/api/src/planning_context.rs", "planning_context.plan_not_grounded"),
+        ("apps/api/src/planning_context.rs", "approved_citation_ids"),
+        ("apps/api/src/planning_context.rs", "eligible_formula_ids"),
+        ("apps/api/src/planning_context.rs", "dev_only_unverified"),
+        ("schemas/planning_context.schema.json", "approved_evidence_ids"),
+        ("schemas/planning_context.schema.json", "allowed_lineage_ids"),
+        ("tests/ingestion/test_phase9_evidence_grounded_planning.py", "test_real_ingestion_review_produces_registry_inputs_for_evidence_grounded_planning"),
+        ("docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md", "approved evidence"),
+        ("README.md", "Phase 9"),
+        ("FEATURES.md", "Mandatory evidence-grounded planning"),
+        ("AUDIT.md", "evidence controls planner execution"),
+    ]
+    return check_contains_all("phase9.evidence_grounded_planning", blobs, required)
+
+
+def check_phase9_evidence_grounded_planning() -> dict:
+    blobs = {
+        "apps/api/src/main.rs": (ROOT / "apps/api/src/main.rs").read_text(encoding="utf-8"),
+        "apps/api/src/planning_context.rs": (ROOT / "apps/api/src/planning_context.rs").read_text(encoding="utf-8"),
+        "schemas/planning_context.schema.json": (ROOT / "schemas/planning_context.schema.json").read_text(encoding="utf-8"),
+        "tests/ingestion/test_phase9_evidence_grounded_planning.py": (ROOT / "tests/ingestion/test_phase9_evidence_grounded_planning.py").read_text(encoding="utf-8"),
+        "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md": (ROOT / "docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md").read_text(encoding="utf-8"),
+        "AUDIT.md": (ROOT / "AUDIT.md").read_text(encoding="utf-8"),
+        "VALIDATION_MATRIX.md": (ROOT / "VALIDATION_MATRIX.md").read_text(encoding="utf-8"),
+        "FEATURES.md": (ROOT / "FEATURES.md").read_text(encoding="utf-8"),
+    }
+    required = [
+        ("apps/api/src/main.rs", "planning_context::build"),
+        ("apps/api/src/main.rs", "planning_context::validate_plan_references"),
+        ("apps/api/src/main.rs", "execution_mode"),
+        ("apps/api/src/planning_context.rs", "planning_context.no_approved_evidence"),
+        ("apps/api/src/planning_context.rs", "VERITAS_ALLOW_EMPTY_EVIDENCE"),
+        ("apps/api/src/planning_context.rs", "dev_only_unverified"),
+        ("schemas/planning_context.schema.json", "approved_evidence_ids"),
+        ("schemas/planning_context.schema.json", "approved_citation_ids"),
+        ("schemas/planning_context.schema.json", "eligible_formula_ids"),
+        ("tests/ingestion/test_phase9_evidence_grounded_planning.py", "test_planning_context_schema_requires_approved_evidence_contract"),
+        ("docs/tutorials/PHASE9_EVIDENCE_GROUNDED_PLANNING.md", "evidence-grounded planning"),
+        ("AUDIT.md", "Phase 9"),
+        ("VALIDATION_MATRIX.md", "Phase 9"),
+        ("FEATURES.md", "Planning Context"),
+    ]
+    return check_contains_all("phase9.evidence_grounded_planning", blobs, required)
+
 def main() -> int:
     checks = [check_file_exists(rel) for rel in REQUIRED_FILES]
     checks.extend([
@@ -1094,6 +1301,11 @@ def main() -> int:
         check_phase2_real_local_ingestion_backend(),
         check_phase3_evidence_eligibility_registry(),
         check_phase4_pre_execution_gate_engine(),
+        check_phase5_tool_verified_math_engine(),
+        check_phase6_shacl_artifact_governance(),
+        check_phase7_artifact_decision_engine(),
+        check_phase8_lineage_schemas(),
+        check_phase9_evidence_grounded_planning(),
         check_optional_command("cargo.check", ["cargo", "check", "--workspace"]),
         check_optional_command("docker.compose.config", ["docker", "compose", "config"]),
     ])

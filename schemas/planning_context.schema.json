@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasPlanningContext",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "kind",
+    "version",
+    "goal",
+    "execution_mode",
+    "production_bound",
+    "status",
+    "ok",
+    "approved_evidence_ids",
+    "approved_citation_ids",
+    "eligible_formula_ids",
+    "retrieved_evidence",
+    "approved_citations",
+    "eligible_formulas",
+    "ontology_facts",
+    "shacl_status",
+    "representation_model",
+    "allowed_lineage_ids",
+    "blocking_reasons",
+    "formula_trace"
+  ],
+  "properties": {
+    "kind": {
+      "const": "VeritasPlanningContext"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_mode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "production_bound": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ready_for_evidence_backed_planning",
+        "dev_only_unverified",
+        "blocked_by_evidence"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "registry_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "retrieved_evidence": {
+      "type": "object"
+    },
+    "approved_retrieved_evidence": {
+      "type": "array"
+    },
+    "approved_citations": {
+      "type": "array"
+    },
+    "eligible_formulas": {
+      "type": "array"
+    },
+    "approved_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "approved_citation_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "eligible_formula_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "ontology_facts": {},
+    "formula_trace": {},
+    "shacl_status": {},
+    "representation_model": {},
+    "source_artifact_status": {
+      "type": "object"
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_action": {
+      "type": "string"
+    },
+    "allowed_lineage_ids": {
+      "type": "object",
+      "required": [
+        "evidence_ids",
+        "citation_ids",
+        "formula_ids"
+      ],
+      "properties": {
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "citation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "formula_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

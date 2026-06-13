@@ -533,7 +533,7 @@ This repository now includes a source-level hardening layer for the 100% complia
 - `/math-to-code` API endpoint and `veritas math-to-code` CLI command.
 - `/opensearch/mapping` and `/opensearch/migrate` API endpoints plus CLI commands for Rust-owned mapping visibility and index creation.
 - Persisted run inspection endpoints: `/status/:run_id`, `/run/:run_id/resume`, and `/run/:run_id/cancel` with CLI equivalents.
-- Automatic SHACL gate before code generation; set `VERITAS_SHACL_ENFORCE=true` to block runs on critical SHACL findings.
+- Automatic SHACL gate before code generation; use `VERITAS_GOVERNANCE_MODE=enforce|advisory|disabled`; enforce is the default governed mode and blocks on SHACL findings.
 - Optional Docker sandbox command runner; set `VERITAS_COMMAND_RUNNER=sandbox` and build `docker/sandbox/rust.Dockerfile` as `veritas-sandbox-rust:latest`.
 - Formula image metadata pipeline with optional PyMuPDF rasterization when page/bbox data exists, plus explicit fallback status when it does not.
 - Fake vLLM server and Docker E2E profile for CI-style control-plane validation without downloading full model weights.
@@ -943,3 +943,58 @@ VERITAS_PRE_CODEGEN_CHECKPOINTS=plan_review,code_architecture_review
 ```
 
 If a required gate is missing or rejected, Veritas writes `gate_decisions.jsonl`, `pre_codegen_gate_report.json`, `pre_codegen_blocked_report.json`, and `final_report.json`, then stops with `files_changed=[]` and `commands_run=[]`. This prevents approvals from being cosmetic and makes them causal controls over downstream execution.
+
+## Phase 5 — Tool-Verified Math Engine
+
+Veritas now includes a real Tool-Verified Math Engine. Math-heavy runs no longer have to rely only on LLM reasoning before code generation. The application can call the `math-tools` service, persist `math_tool_calls.jsonl`, `math_tool_results.jsonl`, and `math_validation_report.json`, and the pre-codegen Gate Engine blocks when the report contains blocking findings or counterexamples.
+
+The math-tools service exposes real executable tools: `parse_latex`, `normalize_expression`, `symbolic_simplify`, `symbolic_differentiate`, `symbolic_equivalence`, `numeric_validate`, `counterexample_search`, `dimension_check`, and `generate_property_tests`. The service uses SymPy, NumPy, SciPy/mpmath-compatible numeric evaluation, and generated property-test code. No model output is treated as mathematical truth unless tool results, governance gates, and validation artifacts support it.
+
+
+## Phase 6: SHACL governance mode and artifact-based validation
+
+Veritas now uses `VERITAS_GOVERNANCE_MODE=enforce|advisory|disabled`. The default governed path is `enforce`, which means SHACL findings block execution before code generation and can block final artifact status after validation. SHACL data is built from real run artifacts such as evidence manifests, formula manifests, citation manifests, evidence registry decisions, representation models, planning context, generated code packages, validation results, human checkpoints, and math-tool reports.
+
+
+## Phase 7 — Artifact Decision Engine
+
+Phase 7 adds a canonical Artifact Decision Engine in `apps/api/src/artifact_decision.rs`. Final artifact status is no longer granted directly by the code-generation loop. The engine reads real run artifacts, gate decisions, validation results, human checkpoint state, SHACL results, and host-validation evidence before producing `artifact_decision.json`.
+
+Important behavior:
+
+- validation success alone does not imply production readiness;
+- missing human approval results in `awaiting_human_approval`;
+- failed SHACL results in `blocked_by_governance` when governance is enforced;
+- failed validation results in `validation_failed` or `repair_failed`;
+- missing host validation results in `local_validated_host_pending`;
+- `production_validated` is only possible when host validation evidence exists and passes.
+
+## Phase 8 update — lineage is now a runtime contract
+
+Veritas now enforces lineage in the real API path. Planner steps must cite evidence, citations, formulas, risks, validation gates, and human checkpoints. Codegen files must cite the plan steps, evidence, citations, formulas, and validation gates that justify them. The API validates this lineage before generated files are written, and final reports must include source, formula, citation, review, plan, file, command, validation, repair, governance, and artifact-decision lineage.
+
+The new implementation lives in `apps/api/src/lineage.rs` and is wired into `execute_autonomous_run_core` before `write_generated_files`.
+
+
+## Phase 8 — Lineage-enforced planning, codegen, and reporting
+
+Phase 8 strengthens the real application trust boundary. Planner steps must cite evidence, citations, formulas, risks, validation gates, and human checkpoints. Code generation must cite the plan steps, evidence, citations, formulas, and validation gates that justify every generated file and validation command. The API validates this lineage before any generated file is written. Final reports now require source documents, citations, formulas, review decisions, representation model, planning context, plan lineage, file lineage, command lineage, validation lineage, repair lineage, governance lineage, artifact decision, and final status.
+
+Run the lineage contract test with:
+
+```bash
+PYTHONPATH=services/ingestion PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+pytest -q tests/ingestion/test_phase8_lineage_schemas.py --disable-warnings
+```
+
+## Phase 9 — Evidence-grounded planning is mandatory
+
+Production-bound planning now requires a real `planning_context.json` built from approved evidence. Veritas loads the Evidence Eligibility Registry, filters approved citations and eligible formulas, includes ontology and SHACL context, and only then calls the planner. If approved evidence is missing, planning blocks before the planner model is called.
+
+`VERITAS_ALLOW_EMPTY_EVIDENCE` is restricted to `execution_mode=dev_exploratory`; it cannot produce production-bound artifacts.
+
+## Phase 9 — Evidence-grounded planning
+
+Phase 9 makes planning causally depend on approved evidence. The real application path now builds `planning_context.json` before calling the planner model. Production-bound planning requires approved evidence and approved citation provenance from the Evidence Eligibility Registry; if those are missing, planning blocks before model planning with `planning_context.no_approved_evidence`.
+
+The planner receives only approved lineage identifiers from `planning_context.json`, and Veritas validates that planner steps cite those approved evidence, citation, and formula identifiers. The legacy `VERITAS_ALLOW_EMPTY_EVIDENCE` bypass is restricted to `execution_mode=dev_exploratory`; artifacts created through that path are classified as `dev_only_unverified`, not production-ready.

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["kind", "ok", "status", "tool_results", "blocking_findings", "counterexamples", "timestamp_ms"],
+  "properties": {
+    "kind": {"const": "VeritasMathValidationReport"},
+    "ok": {"type": "boolean"},
+    "status": {"type": "string"},
+    "math_heavy": {"type": "boolean"},
+    "tool_results": {"type": "array"},
+    "blocking_findings": {"type": "array"},
+    "counterexamples": {"type": "array"},
+    "timestamp_ms": {"type": "integer"}
+  }
+}

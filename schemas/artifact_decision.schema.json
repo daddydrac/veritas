@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VeritasArtifactDecision",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "ok",
+    "kind",
+    "run_id",
+    "artifact_status",
+    "final_status",
+    "validation_status",
+    "production_status_allowed",
+    "host_validation_status",
+    "governance_mode",
+    "decision_reason",
+    "decision_factors",
+    "remaining_limitations",
+    "decision_source"
+  ],
+  "properties": {
+    "ok": {"type": "boolean"},
+    "kind": {"const": "VeritasArtifactDecision"},
+    "run_id": {"type": "string", "minLength": 1},
+    "artifact_status": {"$ref": "#/definitions/artifactStatus"},
+    "final_status": {"$ref": "#/definitions/artifactStatus"},
+    "validation_status": {"type": "object"},
+    "production_status_allowed": {"type": "boolean"},
+    "host_validation_status": {"type": "string"},
+    "governance_mode": {"type": "string"},
+    "decision_reason": {"type": "string"},
+    "decision_factors": {"type": "object"},
+    "remaining_limitations": {"type": "array", "items": {"type": "string"}},
+    "decision_source": {"const": "application_artifact_decision_engine"}
+  },
+  "definitions": {
+    "artifactStatus": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ingestion_incomplete",
+        "awaiting_evidence_review",
+        "awaiting_human_approval",
+        "blocked_by_formula_review",
+        "blocked_by_citation_review",
+        "blocked_by_math_tools",
+        "blocked_by_governance",
+        "validation_failed",
+        "repair_failed",
+        "local_validated_host_pending",
+        "dev_only_unverified",
+        "production_candidate_validated",
+        "production_validated",
+        "cancelled",
+        "failed"
+      ]
+    }
+  }
+}

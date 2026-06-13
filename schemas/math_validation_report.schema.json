@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Veritas Tool-Verified Math Validation Report",
+  "type": "object",
+  "required": ["kind", "ok", "status", "formula_count", "tool_results", "blocking_findings", "counterexamples"],
+  "additionalProperties": true,
+  "properties": {
+    "kind": {"type": "string"},
+    "ok": {"type": "boolean"},
+    "status": {"type": "string"},
+    "formula_count": {"type": "integer"},
+    "tool_results": {"type": "array"},
+    "blocking_findings": {"type": "array"},
+    "counterexamples": {"type": "array"}
+  }
+}

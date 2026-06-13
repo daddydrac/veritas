@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["kind", "tool", "status", "ok", "blocks_codegen", "tool_call_id", "timestamp_ms"],
+  "properties": {
+    "kind": {"const": "VeritasMathToolResult"},
+    "tool": {"type": "string"},
+    "status": {"type": "string"},
+    "ok": {"type": "boolean"},
+    "blocks_codegen": {"type": "boolean"},
+    "tool_call_id": {"type": "string"},
+    "formula_id": {"type": ["string", "null"]},
+    "counterexamples": {"type": "array"},
+    "timestamp_ms": {"type": "integer"}
+  }
+}

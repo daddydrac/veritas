@@ -554,3 +554,80 @@ veritas journey resume <run_id>
 ```
 
 If approval is missing, Veritas stops before code generation and writes `pre_codegen_gate_report.json`. No generated files are written and no validation commands are run until the missing gate is resolved.
+
+## Phase 5 — Tool-Verified Math Engine
+
+Veritas now includes a real Tool-Verified Math Engine. Math-heavy runs no longer have to rely only on LLM reasoning before code generation. The application can call the `math-tools` service, persist `math_tool_calls.jsonl`, `math_tool_results.jsonl`, and `math_validation_report.json`, and the pre-codegen Gate Engine blocks when the report contains blocking findings or counterexamples.
+
+The math-tools service exposes real executable tools: `parse_latex`, `normalize_expression`, `symbolic_simplify`, `symbolic_differentiate`, `symbolic_equivalence`, `numeric_validate`, `counterexample_search`, `dimension_check`, and `generate_property_tests`. The service uses SymPy, NumPy, SciPy/mpmath-compatible numeric evaluation, and generated property-test code. No model output is treated as mathematical truth unless tool results, governance gates, and validation artifacts support it.
+
+
+### SHACL governance mode
+
+Set `VERITAS_GOVERNANCE_MODE=enforce` for governed local or production journeys. Use `advisory` only for exploratory development. Use `disabled` only when explicitly accepting that the run cannot claim production validation.
+
+
+## Phase 7 — Artifact Decision Engine
+
+Phase 7 adds a canonical Artifact Decision Engine in `apps/api/src/artifact_decision.rs`. Final artifact status is no longer granted directly by the code-generation loop. The engine reads real run artifacts, gate decisions, validation results, human checkpoint state, SHACL results, and host-validation evidence before producing `artifact_decision.json`.
+
+Important behavior:
+
+- validation success alone does not imply production readiness;
+- missing human approval results in `awaiting_human_approval`;
+- failed SHACL results in `blocked_by_governance` when governance is enforced;
+- failed validation results in `validation_failed` or `repair_failed`;
+- missing host validation results in `local_validated_host_pending`;
+- `production_validated` is only possible when host validation evidence exists and passes.
+
+## Phase 8 lineage verification
+
+When running a journey or `/run`, generated files now require explicit lineage. A code model response that omits `derived_from_plan_step_ids`, `derived_from_evidence_ids`, `derived_from_citation_ids`, `derived_from_formula_ids`, or `required_validation_ids` is rejected before any file is written.
+
+To inspect lineage after a run, open:
+
+```bash
+cat data/runs/<run_id>/lineage_context.json
+cat data/runs/<run_id>/planning_context.json
+cat data/runs/<run_id>/file_lineage.json
+cat data/runs/<run_id>/final_report.json
+```
+
+The final report now contains `plan_lineage`, `file_lineage`, `command_lineage`, `validation_lineage`, `repair_lineage`, and `governance_lineage`.
+
+
+## Phase 8 lineage check
+
+Veritas now rejects model-generated code before file writes unless the generated package includes explicit lineage back to approved planning, evidence, citation, formula, and validation identifiers. To verify the local lineage contract:
+
+```bash
+PYTHONPATH=services/ingestion PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+pytest -q tests/ingestion/test_phase8_lineage_schemas.py --disable-warnings
+```
+
+## Phase 9 quick check — approved evidence before planning
+
+For production-bound use, run ingestion and review before planning. Veritas now writes `planning_context.json` and blocks planning if there are no approved citations or eligible evidence records.
+
+```bash
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli --config config/veritas.yaml ingest-pdf \
+  --path tests/fixtures/sample_math_paper.pdf \
+  --backend local \
+  --workspace data/runs/phase9-demo
+
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli review-citations \
+  --chunks data/runs/phase9-demo/chunks.jsonl \
+  --decision approve
+
+PYTHONPATH=services/ingestion python3 -m veritas_ingest.cli review-formulas \
+  --chunks data/runs/phase9-demo/chunks.jsonl \
+  --decision approve
+```
+
+After review, the Evidence Eligibility Registry contains the approved citation and eligible formula IDs that planning must cite.
+
+## Evidence-grounded planning behavior
+
+For real production-bound journeys, Veritas now requires approved evidence before planning. After ingestion and evidence review, the journey writes `evidence_registry.json`. Planning then writes `planning_context.json` from approved evidence, approved citations, eligible formulas, ontology facts, and retrieval results.
+
+If evidence has not been reviewed, planning stops with an actionable error instead of asking the planner model to rely on memory. For non-production exploration only, set `execution_mode=dev_exploratory` and `VERITAS_ALLOW_EMPTY_EVIDENCE=true`; the final artifact decision will remain `dev_only_unverified`.
